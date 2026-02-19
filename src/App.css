@@ -1,0 +1,6 @@
+/* Minimal global styles — Mantine handles most styling */
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
