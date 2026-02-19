@@ -15,6 +15,12 @@ async function close() {
   await getCurrentWindow().close();
 }
 
+async function isMaximized() {
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  return await getCurrentWindow().isMaximized();
+}
+
+
 export default function TitleBar() {
   return (
     <div data-tauri-drag-region className="titlebar">
@@ -23,7 +29,7 @@ export default function TitleBar() {
       </Text>
       <div className="titlebar-controls">
         <button className="titlebar-btn" onClick={minimize}>─</button>
-        <button className="titlebar-btn" onClick={maximize}>□</button>
+        <button className="titlebar-btn" onClick={maximize}>▢</button>
         <button className="titlebar-btn titlebar-btn-close" onClick={close}>✕</button>
       </div>
     </div>

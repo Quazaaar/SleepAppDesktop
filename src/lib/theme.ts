@@ -36,7 +36,6 @@ const glassComponents = {
   Modal: Modal.extend({
     styles: () => ({
       content: {
-        background: "var(--glass-bg)",
         backdropFilter: "var(--glass-blur)",
         WebkitBackdropFilter: "var(--glass-blur)",
         border: "1px solid var(--glass-border)",
