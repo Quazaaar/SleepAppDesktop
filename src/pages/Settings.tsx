@@ -13,6 +13,7 @@ import {
   Table,
   ActionIcon,
   Modal,
+  SegmentedControl,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
@@ -25,8 +26,11 @@ import {
   setIgnoredApps,
 } from "../lib/commands";
 import type { ReminderRule } from "../lib/types";
+import { useAppTheme } from "../context/ThemeContext";
+import type { AppThemeId } from "../lib/theme";
 
 export default function Settings() {
+  const { themeId, setTheme } = useAppTheme();
   const [rules, setRules] = useState<ReminderRule[]>([]);
   const [ignoredApps, setIgnoredAppsState] = useState<string[]>([]);
   const [newIgnored, setNewIgnored] = useState("");
@@ -100,6 +104,26 @@ export default function Settings() {
   return (
     <Stack>
       <Title order={2}>Settings</Title>
+
+      {/* Appearance */}
+      <Card shadow="sm" padding="lg" radius="md" withBorder>
+        <Title order={4} mb="md">
+          Appearance
+        </Title>
+        <Text size="sm" c="dimmed" mb="sm">
+          Choose a theme for the app
+        </Text>
+        <SegmentedControl
+          fullWidth
+          value={themeId}
+          onChange={(val) => setTheme(val as AppThemeId)}
+          data={[
+            { value: "glass-dark", label: "Glass Dark" },
+            { value: "glass-light", label: "Glass Light" },
+            { value: "solid-minimal", label: "Solid Minimal" },
+          ]}
+        />
+      </Card>
 
       {/* Ignored Apps */}
       <Card shadow="sm" padding="lg" radius="md" withBorder>
@@ -176,10 +200,7 @@ export default function Settings() {
                     <Switch
                       checked={rule.enabled}
                       onChange={(e) =>
-                        handleToggleRule(
-                          rule.id!,
-                          e.currentTarget.checked
-                        )
+                        handleToggleRule(rule.id!, e.currentTarget.checked)
                       }
                     />
                   </Table.Td>
