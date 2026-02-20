@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod escalation;
 mod models;
 mod reminders;
 mod sync;
@@ -10,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri_plugin_store::StoreExt;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -38,6 +40,16 @@ pub fn run() {
                 let mut state = tracker_for_bg.lock().unwrap();
                 state.db_path = db_path.to_string_lossy().to_string();
                 state.is_tracking = true;
+
+                // Load sync config from store
+                if let Ok(store) = app.store("settings.json") {
+                    if let Some(url) = store.get("sync_url").and_then(|v| v.as_str().map(String::from)) {
+                        state.sync_url = url;
+                    }
+                    if let Some(key) = store.get("api_key").and_then(|v| v.as_str().map(String::from)) {
+                        state.api_key = key;
+                    }
+                }
             }
 
             // Start background tracking
@@ -108,6 +120,9 @@ pub fn run() {
             commands::save_reminder_rule,
             commands::delete_reminder_rule,
             commands::toggle_reminder_rule,
+            commands::sync_now,
+            commands::set_sync_config,
+            commands::get_sync_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

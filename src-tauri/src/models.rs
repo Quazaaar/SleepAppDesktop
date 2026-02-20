@@ -1,5 +1,46 @@
 use serde::{Deserialize, Serialize};
 
+// --- Escalation types ---
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum EscalationLevel {
+    None,
+    Level1, // toast
+    Level2, // popup window
+    Level3, // side panel
+    Level4, // fullscreen overlay
+    Done,   // dismissed for the night
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EscalationSettings {
+    pub green_end_hour: u32,        // hour at which yellow zone starts (e.g. 22 = 10 PM)
+    pub yellow_end_hour: u32,       // hour at which red zone starts (e.g. 23 = 11 PM)
+    pub sensitivity: f32,           // 0.0 (gentle/slow) to 1.0 (aggressive/fast)
+    pub enabled: bool,
+    pub paused_until: Option<String>, // RFC3339 timestamp or None
+}
+
+impl Default for EscalationSettings {
+    fn default() -> Self {
+        Self {
+            green_end_hour: 22,
+            yellow_end_hour: 23,
+            sensitivity: 0.5,
+            enabled: true,
+            paused_until: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EscalationStatePayload {
+    pub level: EscalationLevel,
+    pub message: String,
+}
+
+// --- End escalation types ---
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityLog {
     pub id: Option<i64>,
@@ -53,4 +94,10 @@ pub struct DailyStats {
     pub total_tracked_secs: i64,
     pub app_usage: Vec<AppUsageStat>,
     pub most_used_app: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncStatus {
+    pub configured: bool,
+    pub last_sync_time: Option<String>,
 }

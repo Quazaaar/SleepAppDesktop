@@ -2,7 +2,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, Result, params};
 
-use crate::models::{ActivitySession, AppUsageStat, DailyStats, ReminderRule};
+use crate::models::{ActivitySession, AppUsageStat, DailyStats, EscalationSettings, ReminderRule};
 
 pub fn open_db(db_path: &str) -> Result<Connection> {
     Connection::open(db_path)
@@ -41,6 +41,16 @@ pub fn init_db(db_path: &Path) -> Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_sessions_date ON activity_sessions(date);
         CREATE INDEX IF NOT EXISTS idx_sessions_app ON activity_sessions(app_name);
+
+        CREATE TABLE IF NOT EXISTS escalation_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            green_end_hour INTEGER NOT NULL DEFAULT 22,
+            yellow_end_hour INTEGER NOT NULL DEFAULT 23,
+            sensitivity REAL NOT NULL DEFAULT 0.5,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            paused_until TEXT
+        );
+        INSERT OR IGNORE INTO escalation_settings (id) VALUES (1);
         ",
     )?;
 
@@ -253,6 +263,40 @@ pub fn log_sync(conn: &Connection, records_synced: i64, status: &str) -> Result<
     conn.execute(
         "INSERT INTO sync_log (synced_at, records_synced, status) VALUES (?1, ?2, ?3)",
         params![now, records_synced, status],
+    )?;
+    Ok(())
+}
+
+// Escalation settings CRUD
+
+pub fn get_escalation_settings(conn: &Connection) -> Result<EscalationSettings> {
+    conn.query_row(
+        "SELECT green_end_hour, yellow_end_hour, sensitivity, enabled, paused_until
+         FROM escalation_settings WHERE id = 1",
+        [],
+        |row| {
+            Ok(EscalationSettings {
+                green_end_hour: row.get(0)?,
+                yellow_end_hour: row.get(1)?,
+                sensitivity: row.get(2)?,
+                enabled: row.get::<_, i64>(3)? != 0,
+                paused_until: row.get(4)?,
+            })
+        },
+    )
+}
+
+pub fn save_escalation_settings(conn: &Connection, settings: &EscalationSettings) -> Result<()> {
+    conn.execute(
+        "UPDATE escalation_settings SET green_end_hour = ?1, yellow_end_hour = ?2,
+         sensitivity = ?3, enabled = ?4, paused_until = ?5 WHERE id = 1",
+        params![
+            settings.green_end_hour,
+            settings.yellow_end_hour,
+            settings.sensitivity,
+            settings.enabled as i64,
+            settings.paused_until,
+        ],
     )?;
     Ok(())
 }
