@@ -51,10 +51,13 @@ pub fn run() {
                     }
                 }
 
-                // Load escalation settings from SQLite
+                // Load settings from SQLite
                 if let Ok(conn) = db::open_db(&db_path.to_string_lossy()) {
                     if let Ok(esc_settings) = db::get_escalation_settings(&conn) {
                         state.escalation_engine.settings = esc_settings;
+                    }
+                    if let Ok(apps) = db::get_ignored_apps(&conn) {
+                        state.ignored_apps = apps;
                     }
                 }
             }

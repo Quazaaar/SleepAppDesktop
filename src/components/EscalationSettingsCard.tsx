@@ -49,7 +49,12 @@ export function EscalationSettingsCard() {
     await handleSave(updated);
   };
 
-  const handleTimelineChange = async (greenEnd: number, yellowEnd: number) => {
+  const handleTimelineDrag = (greenEnd: number, yellowEnd: number) => {
+    if (!settings) return;
+    setSettings({ ...settings, green_end_hour: greenEnd, yellow_end_hour: yellowEnd });
+  };
+
+  const handleTimelineDragEnd = async (greenEnd: number, yellowEnd: number) => {
     if (!settings) return;
     const updated = { ...settings, green_end_hour: greenEnd, yellow_end_hour: yellowEnd };
     setSettings(updated);
@@ -93,7 +98,8 @@ export function EscalationSettingsCard() {
             <TimelineBar
               greenEndHour={settings.green_end_hour}
               yellowEndHour={settings.yellow_end_hour}
-              onChange={handleTimelineChange}
+              onChange={handleTimelineDrag}
+              onChangeEnd={handleTimelineDragEnd}
             />
           </div>
 

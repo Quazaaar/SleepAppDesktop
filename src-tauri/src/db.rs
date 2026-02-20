@@ -51,6 +51,10 @@ pub fn init_db(db_path: &Path) -> Result<()> {
             paused_until TEXT
         );
         INSERT OR IGNORE INTO escalation_settings (id) VALUES (1);
+
+        CREATE TABLE IF NOT EXISTS ignored_apps (
+            app_name TEXT PRIMARY KEY NOT NULL
+        );
         ",
     )?;
 
@@ -264,6 +268,25 @@ pub fn log_sync(conn: &Connection, records_synced: i64, status: &str) -> Result<
         "INSERT INTO sync_log (synced_at, records_synced, status) VALUES (?1, ?2, ?3)",
         params![now, records_synced, status],
     )?;
+    Ok(())
+}
+
+// Ignored apps CRUD
+
+pub fn get_ignored_apps(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT app_name FROM ignored_apps ORDER BY app_name ASC")?;
+    let apps = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<String>>>()?;
+    Ok(apps)
+}
+
+pub fn save_ignored_apps(conn: &Connection, apps: &[String]) -> Result<()> {
+    conn.execute("DELETE FROM ignored_apps", [])?;
+    let mut stmt = conn.prepare("INSERT INTO ignored_apps (app_name) VALUES (?1)")?;
+    for app in apps {
+        stmt.execute(params![app])?;
+    }
     Ok(())
 }
 

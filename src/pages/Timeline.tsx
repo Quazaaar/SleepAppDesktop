@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Card,
   Stack,
@@ -7,10 +7,23 @@ import {
   Group,
   Badge,
   Table,
+  UnstyledButton,
 } from "@mantine/core";
+import {
+  IconChevronUp,
+  IconChevronDown,
+  IconSelector,
+} from "@tabler/icons-react";
 import { DatePickerInput, type DateValue } from "@mantine/dates";
 import { getActivityTimeline } from "../lib/commands";
 import type { ActivitySession } from "../lib/types";
+
+type SortKey = "app_name" | "window_title" | "start_time" | "end_time" | "duration_secs";
+type SortDir = "asc" | "desc";
+
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 function formatDuration(secs: number): string {
   const h = Math.floor(secs / 3600);
@@ -32,13 +45,40 @@ function formatTime(iso: string): string {
   }
 }
 
+interface SortableThProps {
+  label: string;
+  sortKey: SortKey;
+  active: SortKey;
+  dir: SortDir;
+  onSort: (key: SortKey) => void;
+}
+
+function SortableTh({ label, sortKey, active, dir, onSort }: SortableThProps) {
+  const isActive = active === sortKey;
+  const Icon = isActive ? (dir === "asc" ? IconChevronUp : IconChevronDown) : IconSelector;
+
+  return (
+    <Table.Th>
+      <UnstyledButton
+        onClick={() => onSort(sortKey)}
+        className="sort-th-btn"
+      >
+        <Group gap={4} wrap="nowrap">
+          <span>{label}</span>
+          <Icon size={14} style={{ opacity: isActive ? 1 : 0.4, flexShrink: 0 }} />
+        </Group>
+      </UnstyledButton>
+    </Table.Th>
+  );
+}
+
 export default function Timeline() {
   const [date, setDate] = useState<Date | null>(new Date());
   const [sessions, setSessions] = useState<ActivitySession[]>([]);
+  const [sortKey, setSortKey] = useState<SortKey>("start_time");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  const dateStr = date
-    ? date.toISOString().slice(0, 10)
-    : new Date().toISOString().slice(0, 10);
+  const dateStr = toLocalDateStr(date ?? new Date());
 
   useEffect(() => {
     getActivityTimeline(dateStr)
@@ -46,32 +86,61 @@ export default function Timeline() {
       .catch(() => setSessions([]));
   }, [dateStr]);
 
+  function handleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  const sorted = useMemo(() => {
+    return [...sessions].sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "duration_secs") {
+        cmp = a.duration_secs - b.duration_secs;
+      } else {
+        cmp = a[sortKey].localeCompare(b[sortKey]);
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [sessions, sortKey, sortDir]);
+
   return (
     <Stack>
       <Group justify="space-between">
         <Title order={2}>Timeline</Title>
         <DatePickerInput
           value={date}
-          onChange={(v: DateValue) => setDate(v instanceof Date ? v : v ? new Date(v) : null)}
+          onChange={(v: DateValue) => {
+            if (!v) { setDate(null); return; }
+            const raw = v instanceof Date ? v : new Date(v);
+            // Mantine builds dates from ISO strings via dayjs → UTC midnight.
+            // Extract the UTC calendar parts and reconstruct as local midnight
+            // so getDate() / getMonth() / getFullYear() return the picked day.
+            setDate(new Date(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate()));
+          }}
           maxDate={new Date()}
+          weekendDays={[]}
           w={200}
         />
       </Group>
 
       <Card shadow="sm" padding="lg" radius="md" withBorder>
-        {sessions.length > 0 ? (
+        {sorted.length > 0 ? (
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>App</Table.Th>
-                <Table.Th>Window</Table.Th>
-                <Table.Th>Start</Table.Th>
-                <Table.Th>End</Table.Th>
-                <Table.Th>Duration</Table.Th>
+                <SortableTh label="App"      sortKey="app_name"      active={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortableTh label="Window"   sortKey="window_title"  active={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortableTh label="Start"    sortKey="start_time"    active={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortableTh label="End"      sortKey="end_time"      active={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortableTh label="Duration" sortKey="duration_secs" active={sortKey} dir={sortDir} onSort={handleSort} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {sessions.map((session, i) => (
+              {sorted.map((session, i) => (
                 <Table.Tr key={session.id ?? i}>
                   <Table.Td>
                     <Badge variant="light" size="sm">
@@ -90,9 +159,7 @@ export default function Timeline() {
                     <Text size="sm">{formatTime(session.end_time)}</Text>
                   </Table.Td>
                   <Table.Td>
-                    <Text size="sm">
-                      {formatDuration(session.duration_secs)}
-                    </Text>
+                    <Text size="sm">{formatDuration(session.duration_secs)}</Text>
                   </Table.Td>
                 </Table.Tr>
               ))}

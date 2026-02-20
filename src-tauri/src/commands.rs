@@ -49,6 +49,8 @@ pub fn get_ignored_apps(state: State<SharedTrackerState>) -> Result<Vec<String>,
 #[tauri::command]
 pub fn set_ignored_apps(state: State<SharedTrackerState>, apps: Vec<String>) -> Result<(), String> {
     let mut tracker = state.lock().map_err(|e| e.to_string())?;
+    let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
+    db::save_ignored_apps(&conn, &apps).map_err(|e| e.to_string())?;
     tracker.ignored_apps = apps;
     Ok(())
 }

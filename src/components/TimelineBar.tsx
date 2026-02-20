@@ -5,6 +5,7 @@ interface TimelineBarProps {
   greenEndHour: number;
   yellowEndHour: number;
   onChange: (greenEnd: number, yellowEnd: number) => void;
+  onChangeEnd?: (greenEnd: number, yellowEnd: number) => void;
 }
 
 function formatHour(hour: number): string {
@@ -14,7 +15,7 @@ function formatHour(hour: number): string {
   return `${hour - 12}pm`;
 }
 
-export function TimelineBar({ greenEndHour, yellowEndHour, onChange }: TimelineBarProps) {
+export function TimelineBar({ greenEndHour, yellowEndHour, onChange, onChangeEnd }: TimelineBarProps) {
   const barRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<"green" | "yellow" | null>(null);
 
@@ -55,12 +56,18 @@ export function TimelineBar({ greenEndHour, yellowEndHour, onChange }: TimelineB
   );
 
   const handleMouseUp = useCallback(() => {
+    if (draggingRef.current && onChangeEnd) {
+      onChangeEnd(greenEndHour, yellowEndHour);
+    }
     draggingRef.current = null;
-  }, []);
+  }, [greenEndHour, yellowEndHour, onChangeEnd]);
 
   const handleMouseLeave = useCallback(() => {
+    if (draggingRef.current && onChangeEnd) {
+      onChangeEnd(greenEndHour, yellowEndHour);
+    }
     draggingRef.current = null;
-  }, []);
+  }, [greenEndHour, yellowEndHour, onChangeEnd]);
 
   return (
     <Stack gap="xs">
