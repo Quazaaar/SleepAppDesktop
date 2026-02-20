@@ -144,6 +144,10 @@ pub fn run() {
             commands::sync_now,
             commands::set_sync_config,
             commands::get_sync_status,
+            commands::show_escalation_window,
+            commands::dismiss_escalation,
+            commands::get_escalation_settings,
+            commands::set_escalation_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

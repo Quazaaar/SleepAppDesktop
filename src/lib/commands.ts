@@ -4,6 +4,8 @@ import type {
   DailyStats,
   ActivitySession,
   ReminderRule,
+  SyncStatus,
+  EscalationSettings,
 } from "./types";
 
 export async function getCurrentApp(): Promise<CurrentAppInfo> {
@@ -49,4 +51,35 @@ export async function toggleReminderRule(
   enabled: boolean
 ): Promise<void> {
   return invoke("toggle_reminder_rule", { ruleId, enabled });
+}
+
+export async function syncNow(): Promise<number> {
+  return invoke("sync_now");
+}
+
+export async function setSyncConfig(
+  syncUrl: string,
+  apiKey: string
+): Promise<void> {
+  return invoke("set_sync_config", { syncUrl, apiKey });
+}
+
+export async function getSyncStatus(): Promise<SyncStatus> {
+  return invoke("get_sync_status");
+}
+
+export async function showEscalationWindow(level: string): Promise<void> {
+  return invoke("show_escalation_window", { level });
+}
+
+export async function dismissEscalation(): Promise<void> {
+  return invoke("dismiss_escalation");
+}
+
+export async function getEscalationSettings(): Promise<EscalationSettings> {
+  return invoke("get_escalation_settings");
+}
+
+export async function setEscalationSettings(settings: EscalationSettings): Promise<void> {
+  return invoke("set_escalation_settings", { settings });
 }

@@ -36,3 +36,28 @@ export interface DailyStats {
   app_usage: AppUsageStat[];
   most_used_app: string;
 }
+
+export interface SyncConfig {
+  sync_url: string;
+  api_key: string;
+}
+
+export interface SyncStatus {
+  configured: boolean;
+  last_sync_time: string | null;
+}
+
+export type EscalationLevel = "None" | "Level1" | "Level2" | "Level3" | "Level4" | "Done";
+
+export interface EscalationStatePayload {
+  level: EscalationLevel;
+  message: string;
+}
+
+export interface EscalationSettings {
+  green_end_hour: number;
+  yellow_end_hour: number;
+  sensitivity: number;
+  enabled: boolean;
+  paused_until: string | null;
+}
