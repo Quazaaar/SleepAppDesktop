@@ -87,3 +87,7 @@ export async function setEscalationSettings(settings: EscalationSettings): Promi
 export async function pauseEscalation(hours: number | null): Promise<void> {
   return invoke("pause_escalation", { hours });
 }
+
+export async function testReminderNotification(message: string): Promise<void> {
+  return invoke("test_reminder_notification", { message });
+}

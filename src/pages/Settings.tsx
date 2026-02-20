@@ -16,12 +16,13 @@ import {
   SegmentedControl,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconPlayerPlay, IconPlus, IconTrash } from "@tabler/icons-react";
 import {
   getReminderRules,
   saveReminderRule,
   deleteReminderRule,
   toggleReminderRule,
+  testReminderNotification,
   getIgnoredApps,
   setIgnoredApps,
   syncNow,
@@ -268,13 +269,31 @@ export default function Settings() {
                     />
                   </Table.Td>
                   <Table.Td>
-                    <ActionIcon
-                      color="red"
-                      variant="light"
-                      onClick={() => handleDeleteRule(rule.id!)}
-                    >
-                      <IconTrash size={14} />
-                    </ActionIcon>
+                    <Group gap="xs" wrap="nowrap">
+                      <ActionIcon
+                        color="blue"
+                        variant="light"
+                        title="Test this reminder"
+                        onClick={() =>
+                          testReminderNotification(rule.message).catch((e) =>
+                            notifications.show({
+                              title: "Error",
+                              message: String(e),
+                              color: "red",
+                            })
+                          )
+                        }
+                      >
+                        <IconPlayerPlay size={14} />
+                      </ActionIcon>
+                      <ActionIcon
+                        color="red"
+                        variant="light"
+                        onClick={() => handleDeleteRule(rule.id!)}
+                      >
+                        <IconTrash size={14} />
+                      </ActionIcon>
+                    </Group>
                   </Table.Td>
                 </Table.Tr>
               ))}

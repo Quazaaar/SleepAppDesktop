@@ -245,6 +245,17 @@ pub fn set_escalation_settings(
 }
 
 #[tauri::command]
+pub fn test_reminder_notification(app: tauri::AppHandle, message: String) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title("Sleep App Reminder")
+        .body(&message)
+        .show()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn pause_escalation(
     state: State<SharedTrackerState>,
     hours: Option<i64>,

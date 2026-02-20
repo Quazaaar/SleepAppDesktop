@@ -164,8 +164,10 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
-                api.prevent_close();
+                if window.label() == "main" {
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -187,6 +189,7 @@ pub fn run() {
             commands::get_escalation_settings,
             commands::set_escalation_settings,
             commands::pause_escalation,
+            commands::test_reminder_notification,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

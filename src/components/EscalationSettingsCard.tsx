@@ -1,13 +1,54 @@
-import { useEffect, useState } from "react";
-import { Card, Title, Text, Switch, Slider, Stack, Group, Loader } from "@mantine/core";
+import { useEffect, useRef, useState } from "react";
+import { Card, Title, Text, Switch, Slider, Stack, Group, Loader, Button, Badge } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { getEscalationSettings, setEscalationSettings } from "../lib/commands";
+import { IconPlayerPlay, IconPlayerStop } from "@tabler/icons-react";
+import { getEscalationSettings, setEscalationSettings, showEscalationWindow } from "../lib/commands";
 import type { EscalationSettings } from "../lib/types";
 import { TimelineBar } from "./TimelineBar";
 
 export function EscalationSettingsCard() {
   const [settings, setSettings] = useState<EscalationSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const [activePreview, setActivePreview] = useState<string | null>(null);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPreview = () => {
+    if (previewTimer.current) {
+      clearTimeout(previewTimer.current);
+      previewTimer.current = null;
+    }
+    if (activePreview && activePreview !== "Level1") {
+      showEscalationWindow("None").catch(() => {});
+    }
+    setActivePreview(null);
+  };
+
+  const handlePreview = (level: string) => {
+    clearPreview();
+    setActivePreview(level);
+
+    if (level === "Level1") {
+      notifications.show({
+        title: "Escalation — Level 1",
+        message: "This is what a Level 1 toast notification looks like.",
+        color: "yellow",
+        autoClose: 5000,
+      });
+      previewTimer.current = setTimeout(() => setActivePreview(null), 5000);
+    } else {
+      showEscalationWindow(level).catch(() => {});
+      previewTimer.current = setTimeout(() => {
+        showEscalationWindow("None").catch(() => {});
+        setActivePreview(null);
+      }, 8000);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     getEscalationSettings()
@@ -120,6 +161,68 @@ export function EscalationSettingsCard() {
               ]}
               mb="xl"
             />
+          </div>
+
+          <div>
+            <Group justify="space-between" mb="xs">
+              <Text size="sm" fw={500}>
+                Preview Levels
+              </Text>
+              {activePreview && (
+                <Badge size="sm" color="yellow" variant="light">
+                  {activePreview} active
+                </Badge>
+              )}
+            </Group>
+            <Group gap="xs">
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconPlayerPlay size={14} />}
+                onClick={() => handlePreview("Level1")}
+                disabled={activePreview === "Level1"}
+              >
+                Level 1 — Toast
+              </Button>
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconPlayerPlay size={14} />}
+                onClick={() => handlePreview("Level2")}
+                disabled={activePreview === "Level2"}
+              >
+                Level 2 — Popup
+              </Button>
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconPlayerPlay size={14} />}
+                onClick={() => handlePreview("Level3")}
+                disabled={activePreview === "Level3"}
+              >
+                Level 3 — Panel
+              </Button>
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconPlayerPlay size={14} />}
+                onClick={() => handlePreview("Level4")}
+                disabled={activePreview === "Level4"}
+              >
+                Level 4 — Fullscreen
+              </Button>
+              {activePreview && (
+                <Button
+                  size="xs"
+                  variant="filled"
+                  color="red"
+                  leftSection={<IconPlayerStop size={14} />}
+                  onClick={clearPreview}
+                >
+                  Close Preview
+                </Button>
+              )}
+            </Group>
           </div>
         </Stack>
       )}
