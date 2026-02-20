@@ -24,10 +24,16 @@ import {
   toggleReminderRule,
   getIgnoredApps,
   setIgnoredApps,
+  syncNow,
+  setSyncConfig,
+  getSyncStatus,
 } from "../lib/commands";
-import type { ReminderRule } from "../lib/types";
+import type { ReminderRule, SyncStatus } from "../lib/types";
+import { notifications } from "@mantine/notifications";
+import { load } from "@tauri-apps/plugin-store";
 import { useAppTheme } from "../context/ThemeContext";
 import type { AppThemeId } from "../lib/theme";
+import { EscalationSettingsCard } from "../components/EscalationSettingsCard";
 
 export default function Settings() {
   const { themeId, setTheme } = useAppTheme();
@@ -35,6 +41,12 @@ export default function Settings() {
   const [ignoredApps, setIgnoredAppsState] = useState<string[]>([]);
   const [newIgnored, setNewIgnored] = useState("");
   const [opened, { open, close }] = useDisclosure(false);
+
+  // Sync state
+  const [syncUrl, setSyncUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   // New rule form state
   const [ruleType, setRuleType] = useState<string>("break_reminder");
@@ -53,10 +65,27 @@ export default function Settings() {
     } catch {
       // ignore
     }
+    try {
+      setSyncStatus(await getSyncStatus());
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {
     loadData();
+    // Load sync config from store
+    (async () => {
+      try {
+        const store = await load("settings.json");
+        const url = await store.get<string>("sync_url");
+        const key = await store.get<string>("api_key");
+        if (url) setSyncUrl(url);
+        if (key) setApiKey(key);
+      } catch {
+        // store not available yet
+      }
+    })();
   }, []);
 
   const handleToggleRule = async (ruleId: number, enabled: boolean) => {
@@ -84,6 +113,37 @@ export default function Settings() {
     setRuleThreshold(30);
     setRuleMessage("");
     await loadData();
+  };
+
+  const handleSaveSyncConfig = async () => {
+    try {
+      await setSyncConfig(syncUrl, apiKey);
+      const store = await load("settings.json");
+      await store.set("sync_url", syncUrl);
+      await store.set("api_key", apiKey);
+      await store.save();
+      setSyncStatus(await getSyncStatus());
+      notifications.show({ title: "Saved", message: "Sync configuration saved", color: "green" });
+    } catch (e) {
+      notifications.show({ title: "Error", message: String(e), color: "red" });
+    }
+  };
+
+  const handleSyncNow = async () => {
+    setSyncing(true);
+    try {
+      const count = await syncNow();
+      setSyncStatus(await getSyncStatus());
+      notifications.show({
+        title: "Sync Complete",
+        message: count > 0 ? `Synced ${count} sessions` : "No new sessions to sync",
+        color: "green",
+      });
+    } catch (e) {
+      notifications.show({ title: "Sync Failed", message: String(e), color: "red" });
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleAddIgnored = async () => {
@@ -124,6 +184,9 @@ export default function Settings() {
           ]}
         />
       </Card>
+
+      {/* Escalation Settings */}
+      <EscalationSettingsCard />
 
       {/* Ignored Apps */}
       <Card shadow="sm" padding="lg" radius="md" withBorder>
@@ -222,7 +285,7 @@ export default function Settings() {
         )}
       </Card>
 
-      {/* Cloud Sync (placeholder) */}
+      {/* Cloud Sync */}
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Title order={4} mb="md">
           Cloud Sync
@@ -230,9 +293,38 @@ export default function Settings() {
         <Text size="sm" c="dimmed" mb="sm">
           Configure cloud sync to back up your data
         </Text>
-        <TextInput label="API URL" placeholder="https://api.example.com" mb="sm" />
-        <TextInput label="API Key" placeholder="Your API key" type="password" mb="sm" />
-        <Button variant="light">Sync Now</Button>
+        <TextInput
+          label="API URL"
+          placeholder="http://localhost:3000"
+          value={syncUrl}
+          onChange={(e) => setSyncUrl(e.currentTarget.value)}
+          mb="sm"
+        />
+        <TextInput
+          label="API Key"
+          placeholder="Your API key"
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.currentTarget.value)}
+          mb="sm"
+        />
+        <Group>
+          <Button variant="light" onClick={handleSaveSyncConfig}>
+            Save Config
+          </Button>
+          <Button
+            onClick={handleSyncNow}
+            loading={syncing}
+            disabled={!syncStatus?.configured}
+          >
+            Sync Now
+          </Button>
+        </Group>
+        {syncStatus?.last_sync_time && (
+          <Text size="xs" c="dimmed" mt="sm">
+            Last sync: {new Date(syncStatus.last_sync_time).toLocaleString()}
+          </Text>
+        )}
       </Card>
 
       {/* Add Rule Modal */}
