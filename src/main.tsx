@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
-import { BrowserRouter } from "react-router-dom";
+import { HashRouter } from "react-router-dom";
 import App from "./App";
 import { ThemeProvider, useAppTheme } from "./context/ThemeContext";
 import { themePresets } from "./lib/theme";
@@ -28,9 +28,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <ThemeProvider>
       <ThemedMantineProvider>
         <Notifications />
-        <BrowserRouter>
+        <HashRouter>
           <App />
-        </BrowserRouter>
+        </HashRouter>
       </ThemedMantineProvider>
     </ThemeProvider>
   </React.StrictMode>
