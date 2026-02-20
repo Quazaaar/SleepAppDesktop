@@ -11,14 +11,24 @@ import {
 } from "@mantine/core";
 import { DonutChart } from "@mantine/charts";
 import { IconPlayerPlay, IconPlayerPause } from "@tabler/icons-react";
-import { getCurrentApp, getDailyStats, toggleTracking } from "../lib/commands";
-import type { CurrentAppInfo, DailyStats } from "../lib/types";
+import { getCurrentApp, getDailyStats, toggleTracking, getEscalationSettings, pauseEscalation } from "../lib/commands";
+import type { CurrentAppInfo, DailyStats, EscalationSettings } from "../lib/types";
 
 function formatDuration(secs: number): string {
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
+}
+
+function computeTonightHours(): number {
+  const now = new Date();
+  const tomorrow6am = new Date(now);
+  tomorrow6am.setDate(tomorrow6am.getDate() + 1);
+  tomorrow6am.setHours(6, 0, 0, 0);
+  const diffMs = tomorrow6am.getTime() - now.getTime();
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  return Math.max(hours, 1);
 }
 
 const COLORS = [
@@ -40,7 +50,26 @@ export default function Dashboard() {
   const [currentApp, setCurrentApp] = useState<CurrentAppInfo | null>(null);
   const [stats, setStats] = useState<DailyStats | null>(null);
   const [isTracking, setIsTracking] = useState(true);
-  const today = new Date().toISOString().slice(0, 10);
+  const [escSettings, setEscSettings] = useState<EscalationSettings | null>(null);
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  const loadEscSettings = async () => {
+    try {
+      setEscSettings(await getEscalationSettings());
+    } catch {
+      // ignore
+    }
+  };
+
+  const handlePause = async (hours: number | null) => {
+    try {
+      await pauseEscalation(hours);
+      await loadEscSettings();
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -61,6 +90,7 @@ export default function Dashboard() {
         .then(setStats)
         .catch(() => {});
     fetchStats();
+    loadEscSettings();
     const interval = setInterval(fetchStats, 15000);
     return () => clearInterval(interval);
   }, [today]);
@@ -80,6 +110,17 @@ export default function Dashboard() {
       value: app.total_duration_secs,
       color: COLORS[i % COLORS.length],
     })) ?? [];
+
+  const isEscPaused =
+    escSettings?.paused_until != null &&
+    new Date(escSettings.paused_until) > new Date();
+
+  const pausedUntilFormatted = escSettings?.paused_until
+    ? new Date(escSettings.paused_until).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
 
   return (
     <Stack>
@@ -142,6 +183,56 @@ export default function Dashboard() {
           )}
         </Card>
       </SimpleGrid>
+
+      <Card shadow="sm" padding="lg" radius="md" withBorder>
+        <Group justify="space-between" align="center" mb="xs">
+          <Text size="sm" c="dimmed">
+            Escalation Controls
+          </Text>
+          {isEscPaused && pausedUntilFormatted && (
+            <Badge color="yellow" variant="light">
+              Paused until {pausedUntilFormatted}
+            </Badge>
+          )}
+        </Group>
+        {isEscPaused ? (
+          <Button
+            variant="light"
+            color="green"
+            size="sm"
+            onClick={() => handlePause(null)}
+          >
+            Resume Escalation
+          </Button>
+        ) : (
+          <Button.Group>
+            <Button
+              variant="light"
+              color="orange"
+              size="sm"
+              onClick={() => handlePause(1)}
+            >
+              Pause 1h
+            </Button>
+            <Button
+              variant="light"
+              color="orange"
+              size="sm"
+              onClick={() => handlePause(2)}
+            >
+              Pause 2h
+            </Button>
+            <Button
+              variant="light"
+              color="orange"
+              size="sm"
+              onClick={() => handlePause(computeTonightHours())}
+            >
+              Pause Tonight
+            </Button>
+          </Button.Group>
+        )}
+      </Card>
 
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Text size="sm" c="dimmed" mb="md">

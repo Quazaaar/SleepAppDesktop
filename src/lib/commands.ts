@@ -83,3 +83,7 @@ export async function getEscalationSettings(): Promise<EscalationSettings> {
 export async function setEscalationSettings(settings: EscalationSettings): Promise<void> {
   return invoke("set_escalation_settings", { settings });
 }
+
+export async function pauseEscalation(hours: number | null): Promise<void> {
+  return invoke("pause_escalation", { hours });
+}

@@ -241,3 +241,19 @@ pub fn set_escalation_settings(
     tracker.escalation_engine.settings = settings;
     Ok(())
 }
+
+#[tauri::command]
+pub fn pause_escalation(
+    state: State<SharedTrackerState>,
+    hours: Option<i64>,
+) -> Result<(), String> {
+    let mut tracker = state.lock().map_err(|e| e.to_string())?;
+    let until = match hours {
+        Some(h) => Some((chrono::Local::now() + chrono::Duration::hours(h)).to_rfc3339()),
+        None => None, // unpause
+    };
+    tracker.escalation_engine.settings.paused_until = until;
+    let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
+    db::save_escalation_settings(&conn, &tracker.escalation_engine.settings).map_err(|e| e.to_string())?;
+    Ok(())
+}

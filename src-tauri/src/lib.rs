@@ -81,8 +81,14 @@ pub fn run() {
                 MenuItem::with_id(app, "show", "Show Dashboard", true, None::<&str>)?;
             let pause_item =
                 MenuItem::with_id(app, "pause", "Pause Tracking", true, None::<&str>)?;
+            let pause_1h =
+                MenuItem::with_id(app, "pause_1h", "Pause Escalation 1 hour", true, None::<&str>)?;
+            let pause_2h =
+                MenuItem::with_id(app, "pause_2h", "Pause Escalation 2 hours", true, None::<&str>)?;
+            let pause_tonight =
+                MenuItem::with_id(app, "pause_tonight", "Pause Escalation until tomorrow", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &pause_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&show_item, &pause_item, &pause_1h, &pause_2h, &pause_tonight, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -98,6 +104,35 @@ pub fn run() {
                         if let Some(state) = app.try_state::<Arc<Mutex<tracker::TrackerState>>>() {
                             if let Ok(mut t) = state.lock() {
                                 t.is_tracking = !t.is_tracking;
+                            }
+                        }
+                    }
+                    "pause_1h" | "pause_2h" | "pause_tonight" => {
+                        let hours: i64 = match event.id().as_ref() {
+                            "pause_1h" => 1,
+                            "pause_2h" => 2,
+                            "pause_tonight" => {
+                                let now = chrono::Local::now();
+                                let tomorrow_6am = (now + chrono::Duration::days(1))
+                                    .date_naive()
+                                    .and_hms_opt(6, 0, 0)
+                                    .unwrap();
+                                let tomorrow_6am = tomorrow_6am
+                                    .and_local_timezone(chrono::Local)
+                                    .unwrap();
+                                let diff = tomorrow_6am.signed_duration_since(now);
+                                diff.num_hours().max(1)
+                            }
+                            _ => 1,
+                        };
+                        let until = (chrono::Local::now() + chrono::Duration::hours(hours))
+                            .to_rfc3339();
+                        if let Some(state) = app.try_state::<std::sync::Arc<std::sync::Mutex<crate::tracker::TrackerState>>>() {
+                            if let Ok(mut t) = state.lock() {
+                                t.escalation_engine.settings.paused_until = Some(until.clone());
+                                if let Ok(conn) = crate::db::open_db(&t.db_path) {
+                                    let _ = crate::db::save_escalation_settings(&conn, &t.escalation_engine.settings);
+                                }
                             }
                         }
                     }
@@ -148,6 +183,7 @@ pub fn run() {
             commands::dismiss_escalation,
             commands::get_escalation_settings,
             commands::set_escalation_settings,
+            commands::pause_escalation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
