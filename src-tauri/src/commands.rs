@@ -1,6 +1,7 @@
 use tauri::{Manager, State};
 use tauri::WebviewUrl;
 use tauri::webview::WebviewWindowBuilder;
+use tauri_plugin_store::StoreExt;
 
 use crate::db;
 use crate::models::*;
@@ -134,7 +135,20 @@ pub fn get_sync_status(state: State<SharedTrackerState>) -> Result<SyncStatus, S
 pub async fn show_escalation_window(app: tauri::AppHandle, level: String) -> Result<(), String> {
     // Close any existing escalation windows before creating a new one.
     // This prevents window accumulation when the level advances (Pitfall 4).
-    for label in ["escalation-popup", "escalation-panel", "escalation-fullscreen"] {
+    // For the popup, persist its position/size before closing so we can restore it.
+    if let Some(w) = app.get_webview_window("escalation-popup") {
+        if let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) {
+            if let Ok(store) = app.store("settings.json") {
+                let _ = store.set("popup_x", serde_json::json!(pos.x));
+                let _ = store.set("popup_y", serde_json::json!(pos.y));
+                let _ = store.set("popup_w", serde_json::json!(size.width));
+                let _ = store.set("popup_h", serde_json::json!(size.height));
+                let _ = store.save();
+            }
+        }
+        let _ = w.close();
+    }
+    for label in ["escalation-panel", "escalation-fullscreen"] {
         if let Some(w) = app.get_webview_window(label) {
             let _ = w.close();
         }
@@ -142,19 +156,42 @@ pub async fn show_escalation_window(app: tauri::AppHandle, level: String) -> Res
 
     match level.as_str() {
         "Level2" => {
-            WebviewWindowBuilder::new(
+            // Restore saved geometry or use defaults.
+            let (mut x, mut y, mut w, mut h) = (None, None, 320.0_f64, 140.0_f64);
+            if let Ok(store) = app.store("settings.json") {
+                if let (Some(sx), Some(sy)) = (
+                    store.get("popup_x").and_then(|v| v.as_f64()),
+                    store.get("popup_y").and_then(|v| v.as_f64()),
+                ) {
+                    x = Some(sx);
+                    y = Some(sy);
+                }
+                if let (Some(sw), Some(sh)) = (
+                    store.get("popup_w").and_then(|v| v.as_f64()),
+                    store.get("popup_h").and_then(|v| v.as_f64()),
+                ) {
+                    w = sw.max(200.0);
+                    h = sh.max(80.0);
+                }
+            }
+
+            let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "escalation-popup",
                 WebviewUrl::App("/#/overlay/popup".into()),
             )
             .title("LucidShift")
-            .inner_size(320.0, 140.0)
+            .inner_size(w, h)
             .decorations(false)
             .always_on_top(true)
             .skip_taskbar(true)
-            .resizable(false)
-            .build()
-            .map_err(|e| e.to_string())?;
+            .resizable(true);
+
+            if let (Some(px), Some(py)) = (x, y) {
+                builder = builder.position(px, py);
+            }
+
+            builder.build().map_err(|e| e.to_string())?;
         }
         "Level3" => {
             let (width, height) = app

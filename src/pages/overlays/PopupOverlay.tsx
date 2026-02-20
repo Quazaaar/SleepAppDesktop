@@ -15,12 +15,14 @@ export default function PopupOverlay() {
     <Card
       padding="sm"
       radius="md"
+      data-tauri-drag-region
       style={{
         background: "rgba(20, 20, 30, 0.97)",
         border: "1px solid rgba(255, 255, 255, 0.12)",
         height: "100vh",
         display: "flex",
         alignItems: "center",
+        cursor: "grab",
       }}
     >
       <Stack gap={4}>
