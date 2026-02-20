@@ -50,10 +50,31 @@ pub fn run() {
                         state.api_key = key;
                     }
                 }
+
+                // Load escalation settings from SQLite
+                if let Ok(conn) = db::open_db(&db_path.to_string_lossy()) {
+                    if let Ok(esc_settings) = db::get_escalation_settings(&conn) {
+                        state.escalation_engine.settings = esc_settings;
+                    }
+                }
             }
 
             // Start background tracking
             tracker::start_tracking(tracker_for_bg);
+
+            // Inject app handle so the escalation engine can emit events.
+            // The Arc<Mutex<TrackerState>> is shared between this setup closure
+            // and the spawned loop, so writing app_handle here is visible to
+            // the background task.
+            {
+                let app_handle = app.handle().clone();
+                if let Ok(mut state) = app
+                    .state::<Arc<Mutex<tracker::TrackerState>>>()
+                    .lock()
+                {
+                    state.app_handle = Some(app_handle);
+                }
+            }
 
             // Build system tray
             let show_item =

@@ -3,9 +3,11 @@ use std::sync::{Arc, Mutex};
 use active_win_pos_rs::get_active_window;
 use chrono::Local;
 use tokio::time::{Duration, interval};
+use user_idle::UserIdle;
 
 use crate::db;
-use crate::models::{ActivitySession, CurrentAppInfo};
+use crate::escalation::EscalationEngine;
+use crate::models::{ActivitySession, CurrentAppInfo, EscalationSettings};
 
 pub struct TrackerState {
     pub is_tracking: bool,
@@ -18,6 +20,9 @@ pub struct TrackerState {
     pub total_continuous_secs: i64,
     pub sync_url: String,
     pub api_key: String,
+    pub escalation_engine: EscalationEngine,
+    pub app_handle: Option<tauri::AppHandle>,
+    pub idle_threshold_secs: u64,
 }
 
 impl TrackerState {
@@ -33,6 +38,9 @@ impl TrackerState {
             total_continuous_secs: 0,
             sync_url: String::new(),
             api_key: String::new(),
+            escalation_engine: EscalationEngine::new(EscalationSettings::default()),
+            app_handle: None,
+            idle_threshold_secs: 120, // 2 minutes
         }
     }
 }
@@ -128,6 +136,18 @@ pub fn start_tracking(state: SharedTrackerState) {
                     info.duration_secs += 5;
                     info.window_title = window_title;
                 }
+            }
+
+            // Idle detection — treat errors as "not idle" (Pitfall 7 in research)
+            let is_idle = UserIdle::get_time()
+                .map(|t| t.as_seconds() >= tracker.idle_threshold_secs)
+                .unwrap_or(false);
+
+            // Tick escalation engine if we have an app handle to emit events.
+            // Clone the handle so we release the immutable borrow on tracker
+            // before calling tick() which requires a mutable borrow.
+            if let Some(handle) = tracker.app_handle.clone() {
+                tracker.escalation_engine.tick(&handle, is_idle);
             }
         }
     });
