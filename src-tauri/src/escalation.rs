@@ -38,7 +38,9 @@ impl EscalationEngine {
     ///
     /// `is_idle` — true when the OS reports no keyboard/mouse activity for
     /// the configured idle threshold.
-    pub fn tick(&mut self, app_handle: &AppHandle, is_idle: bool) {
+    /// `current_category` — resolved category for the active app ("productive", "distracting",
+    /// "neutral", "uncategorized"). Adjusts escalation gap via multiplier.
+    pub fn tick(&mut self, app_handle: &AppHandle, is_idle: bool, current_category: &str) {
         // Terminal state — nothing more to do tonight.
         if self.current_level == EscalationLevel::Done {
             return;
@@ -79,7 +81,14 @@ impl EscalationEngine {
         // Gap between levels.
         // sensitivity 0.0 → 20 min; sensitivity 1.0 → 10 min.
         let gap_minutes = 20.0 - (self.settings.sensitivity * 10.0);
-        let gap_secs = (gap_minutes * 60.0) as i64;
+
+        // Apply category multiplier: higher multiplier = shorter gap = faster escalation
+        let multiplier: f32 = match current_category {
+            "distracting" => self.settings.distracting_multiplier.max(0.01),
+            "productive"  => self.settings.productive_multiplier.max(0.01),
+            _             => 1.0, // neutral, uncategorized
+        };
+        let gap_secs = ((gap_minutes * 60.0) / multiplier) as i64;
 
         let elapsed = self
             .last_level_change

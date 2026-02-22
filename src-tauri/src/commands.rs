@@ -447,6 +447,77 @@ pub fn set_escalation_settings(
 }
 
 #[tauri::command]
+pub fn get_app_categories(state: State<SharedTrackerState>) -> Result<Vec<AppCategoryEntry>, String> {
+    let tracker = state.lock().map_err(|e| e.to_string())?;
+    let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
+    db::get_app_categories(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_app_category(
+    state: State<SharedTrackerState>,
+    app_name: String,
+    category: String,
+) -> Result<(), String> {
+    let mut tracker = state.lock().map_err(|e| e.to_string())?;
+    let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
+    db::set_app_category(&conn, &app_name, &category).map_err(|e| e.to_string())?;
+    tracker.app_categories.insert(app_name.to_lowercase(), category);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_title_keyword_rules(state: State<SharedTrackerState>) -> Result<Vec<TitleKeywordRule>, String> {
+    let tracker = state.lock().map_err(|e| e.to_string())?;
+    let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
+    db::get_title_keyword_rules(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_title_keyword_rule(
+    state: State<SharedTrackerState>,
+    app_name: String,
+    keyword: String,
+    category: String,
+) -> Result<i64, String> {
+    let mut tracker = state.lock().map_err(|e| e.to_string())?;
+    let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
+    let new_id = db::add_title_keyword_rule(&conn, &app_name, &keyword, &category)
+        .map_err(|e| e.to_string())?;
+    // Reload title_keyword_rules cache from DB
+    let rules = db::get_title_keyword_rules(&conn).map_err(|e| e.to_string())?;
+    tracker.title_keyword_rules = rules
+        .iter()
+        .map(|r| (r.app_name.clone(), r.keyword.clone(), r.category.clone()))
+        .collect();
+    Ok(new_id)
+}
+
+#[tauri::command]
+pub fn delete_title_keyword_rule(
+    state: State<SharedTrackerState>,
+    id: i64,
+) -> Result<(), String> {
+    let mut tracker = state.lock().map_err(|e| e.to_string())?;
+    let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
+    db::delete_title_keyword_rule(&conn, id).map_err(|e| e.to_string())?;
+    // Reload title_keyword_rules cache from DB
+    let rules = db::get_title_keyword_rules(&conn).map_err(|e| e.to_string())?;
+    tracker.title_keyword_rules = rules
+        .iter()
+        .map(|r| (r.app_name.clone(), r.keyword.clone(), r.category.clone()))
+        .collect();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_uncategorized_count(state: State<SharedTrackerState>) -> Result<i64, String> {
+    let tracker = state.lock().map_err(|e| e.to_string())?;
+    let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
+    db::get_uncategorized_count(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn test_reminder_notification(app: tauri::AppHandle, message: String) -> Result<(), String> {
     use tauri_plugin_notification::NotificationExt;
     app.notification()

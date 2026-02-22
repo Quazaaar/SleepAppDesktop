@@ -82,6 +82,17 @@ pub fn run() {
                     if let Ok(apps) = db::get_ignored_apps(&conn) {
                         state.ignored_apps = apps;
                     }
+                    if let Ok(cats) = db::get_all_app_categories_for_cache(&conn) {
+                        for (name, cat) in cats {
+                            state.app_categories.insert(name, cat);
+                        }
+                    }
+                    if let Ok(rules) = db::get_title_keyword_rules(&conn) {
+                        state.title_keyword_rules = rules
+                            .iter()
+                            .map(|r| (r.app_name.clone(), r.keyword.clone(), r.category.clone()))
+                            .collect();
+                    }
                 }
             }
 
@@ -261,6 +272,12 @@ pub fn run() {
             commands::set_escalation_settings,
             commands::pause_escalation,
             commands::test_reminder_notification,
+            commands::get_app_categories,
+            commands::set_app_category,
+            commands::get_title_keyword_rules,
+            commands::add_title_keyword_rule,
+            commands::delete_title_keyword_rule,
+            commands::get_uncategorized_count,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
