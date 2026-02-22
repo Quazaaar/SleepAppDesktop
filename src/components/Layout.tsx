@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   AppShell,
   NavLink,
@@ -7,6 +7,7 @@ import {
   Text,
   ActionIcon,
   Tooltip,
+  Badge,
 } from "@mantine/core";
 import {
   IconDashboard,
@@ -15,9 +16,11 @@ import {
   IconMoon,
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
+  IconCategory,
 } from "@tabler/icons-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import TitleBar from "./TitleBar";
+import { getUncategorizedCount } from "../lib/commands";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -26,6 +29,7 @@ interface LayoutProps {
 const NAV_ITEMS = [
   { label: "Dashboard", icon: IconDashboard, path: "/" },
   { label: "Timeline", icon: IconTimeline, path: "/timeline" },
+  { label: "Apps", icon: IconCategory, path: "/apps" },
   { label: "Settings", icon: IconSettings, path: "/settings" },
 ];
 
@@ -33,6 +37,14 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+  const [uncatCount, setUncatCount] = useState(0);
+
+  useEffect(() => {
+    const load = () => getUncategorizedCount().then(setUncatCount).catch(() => {});
+    load();
+    const id = setInterval(load, 60000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <AppShell
@@ -93,6 +105,13 @@ export default function Layout({ children }: LayoutProps) {
                 borderRadius: "var(--mantine-radius-md)",
                 justifyContent: collapsed ? "center" : undefined,
               }}
+              rightSection={
+                path === "/apps" && uncatCount > 0 && !collapsed ? (
+                  <Badge size="xs" variant="filled" color="orange" circle>
+                    {uncatCount}
+                  </Badge>
+                ) : undefined
+              }
             />
           </Tooltip>
         ))}

@@ -4,6 +4,7 @@ import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Timeline from "./pages/Timeline";
 import Settings from "./pages/Settings";
+import Apps from "./pages/Apps";
 import { useEscalationState } from "./hooks/useEscalationState";
 import EscalationToastHandler from "./pages/overlays/EscalationToastHandler";
 import PopupOverlay from "./pages/overlays/PopupOverlay";
@@ -56,6 +57,7 @@ function App() {
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/timeline" element={<Timeline />} />
                     <Route path="/settings" element={<Settings />} />
+                    <Route path="/apps" element={<Apps />} />
                   </Routes>
                 </motion.div>
               </AnimatePresence>
