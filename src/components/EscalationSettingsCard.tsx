@@ -181,7 +181,7 @@ export function EscalationSettingsCard() {
               marks={[
                 { value: 0, label: "Gentle" },
                 { value: 0.5, label: "Moderate" },
-                { value: 1, label: "Aggressive" },
+                { value: 1, label: "Assertive" },
               ]}
               mb="xl"
             />
@@ -210,7 +210,7 @@ export function EscalationSettingsCard() {
                     onChangeEnd={handleProductiveMultiplierSave}
                     label={(v) => v >= 1.0 ? "Normal" : `${(1 / v).toFixed(1)}x slower`}
                     marks={[
-                      { value: 0.1, label: "10x slower" },
+                      { value: 0.1, label: "10x" },
                       { value: 0.5, label: "2x slower" },
                       { value: 1.0, label: "Normal" },
                     ]}
