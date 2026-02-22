@@ -8,11 +8,87 @@ import {
   Badge,
   Button,
   SimpleGrid,
+  ActionIcon,
 } from "@mantine/core";
 import { DonutChart } from "@mantine/charts";
-import { IconPlayerPlay, IconPlayerPause } from "@tabler/icons-react";
-import { getCurrentApp, getDailyStats, toggleTracking, getEscalationSettings, pauseEscalation, getTracking } from "../lib/commands";
-import type { CurrentAppInfo, DailyStats, EscalationSettings } from "../lib/types";
+import { IconPlayerPlay, IconPlayerPause, IconX, IconCopy } from "@tabler/icons-react";
+import { getCurrentApp, getDailyStats, toggleTracking, getEscalationSettings, pauseEscalation, getTracking, getLatestWrapUpNote } from "../lib/commands";
+import type { CurrentAppInfo, DailyStats, EscalationSettings, WrapUpNote } from "../lib/types";
+
+function ResumePopup({ note, onDismiss }: { note: WrapUpNote; onDismiss: () => void }) {
+  const dateLabel = new Date(note.created_at).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+
+  const handleCopy = async () => {
+    const parts: string[] = [];
+    if (note.working_on.trim()) {
+      parts.push(`Working on:\n${note.working_on}`);
+    }
+    if (note.next_steps.trim()) {
+      parts.push(`Next steps:\n${note.next_steps}`);
+    }
+    try {
+      await navigator.clipboard.writeText(parts.join("\n\n"));
+    } catch {
+      // silently ignore clipboard errors
+    }
+  };
+
+  return (
+    <Card
+      style={{
+        position: "fixed",
+        bottom: 24,
+        right: 24,
+        width: 320,
+        zIndex: 1000,
+        background: "rgba(18, 18, 28, 0.97)",
+        border: "1px solid rgba(255, 255, 255, 0.12)",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+      }}
+      padding="md"
+    >
+      <Group justify="space-between" mb="xs">
+        <Text size="sm" c="dimmed">
+          Notes from {dateLabel}
+        </Text>
+        <ActionIcon variant="subtle" size="sm" onClick={onDismiss} aria-label="Dismiss">
+          <IconX size={14} />
+        </ActionIcon>
+      </Group>
+
+      {note.working_on.trim() && (
+        <Stack gap={2} mb="xs">
+          <Text size="xs" c="dimmed">
+            Working on
+          </Text>
+          <Text size="sm">{note.working_on}</Text>
+        </Stack>
+      )}
+
+      {note.next_steps.trim() && (
+        <Stack gap={2} mb="xs">
+          <Text size="xs" c="dimmed">
+            Next steps
+          </Text>
+          <Text size="sm">{note.next_steps}</Text>
+        </Stack>
+      )}
+
+      <Button
+        size="xs"
+        variant="light"
+        leftSection={<IconCopy size={12} />}
+        mt="xs"
+        onClick={handleCopy}
+      >
+        Copy Notes
+      </Button>
+    </Card>
+  );
+}
 
 function formatDuration(secs: number): string {
   const h = Math.floor(secs / 3600);
@@ -51,6 +127,8 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DailyStats | null>(null);
   const [isTracking, setIsTracking] = useState(true);
   const [escSettings, setEscSettings] = useState<EscalationSettings | null>(null);
+  const [resumeNote, setResumeNote] = useState<WrapUpNote | null>(null);
+  const [resumeDismissed, setResumeDismissed] = useState(false);
   const d = new Date();
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -70,6 +148,14 @@ export default function Dashboard() {
       // ignore
     }
   };
+
+  useEffect(() => {
+    getLatestWrapUpNote()
+      .then((note) => {
+        if (note) setResumeNote(note);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const pollCurrentApp = async () => {
@@ -264,6 +350,13 @@ export default function Dashboard() {
           </Text>
         )}
       </Card>
+
+      {resumeNote && !resumeDismissed && (
+        <ResumePopup
+          note={resumeNote}
+          onDismiss={() => setResumeDismissed(true)}
+        />
+      )}
     </Stack>
   );
 }
