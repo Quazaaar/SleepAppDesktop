@@ -26,8 +26,11 @@ import {
   getIgnoredApps,
   setIgnoredApps,
   syncNow,
-  setSyncConfig,
   getSyncStatus,
+  login,
+  register,
+  logout,
+  getAuthStatus,
 } from "../lib/commands";
 import type { ReminderRule, SyncStatus } from "../lib/types";
 import { notifications } from "@mantine/notifications";
@@ -43,11 +46,14 @@ export default function Settings() {
   const [newIgnored, setNewIgnored] = useState("");
   const [opened, { open, close }] = useDisclosure(false);
 
-  // Sync state
+  // Auth / sync state
   const [syncUrl, setSyncUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
 
   // New rule form state
   const [ruleType, setRuleType] = useState<string>("break_reminder");
@@ -71,18 +77,21 @@ export default function Settings() {
     } catch {
       // ignore
     }
+    try {
+      setIsLoggedIn(await getAuthStatus());
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {
     loadData();
-    // Load sync config from store
+    // Load sync URL from store
     (async () => {
       try {
         const store = await load("settings.json");
         const url = await store.get<string>("sync_url");
-        const key = await store.get<string>("api_key");
         if (url) setSyncUrl(url);
-        if (key) setApiKey(key);
       } catch {
         // store not available yet
       }
@@ -116,15 +125,42 @@ export default function Settings() {
     await loadData();
   };
 
-  const handleSaveSyncConfig = async () => {
+  const handleLogin = async () => {
+    setAuthLoading(true);
     try {
-      await setSyncConfig(syncUrl, apiKey);
-      const store = await load("settings.json");
-      await store.set("sync_url", syncUrl);
-      await store.set("api_key", apiKey);
-      await store.save();
+      await login(syncUrl, email, password);
+      setIsLoggedIn(true);
+      setPassword("");
       setSyncStatus(await getSyncStatus());
-      notifications.show({ title: "Saved", message: "Sync configuration saved", color: "green" });
+      notifications.show({ title: "Logged in", message: "Connected to cloud sync", color: "green" });
+    } catch (e) {
+      notifications.show({ title: "Login failed", message: String(e), color: "red" });
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    setAuthLoading(true);
+    try {
+      await register(syncUrl, email, password);
+      setIsLoggedIn(true);
+      setPassword("");
+      setSyncStatus(await getSyncStatus());
+      notifications.show({ title: "Registered", message: "Account created and connected", color: "green" });
+    } catch (e) {
+      notifications.show({ title: "Registration failed", message: String(e), color: "red" });
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setIsLoggedIn(false);
+      setSyncStatus(await getSyncStatus());
+      notifications.show({ title: "Logged out", message: "Disconnected from cloud sync", color: "blue" });
     } catch (e) {
       notifications.show({ title: "Error", message: String(e), color: "red" });
     }
@@ -309,40 +345,64 @@ export default function Settings() {
         <Title order={4} mb="md">
           Cloud Sync
         </Title>
-        <Text size="sm" c="dimmed" mb="sm">
-          Configure cloud sync to back up your data
-        </Text>
-        <TextInput
-          label="API URL"
-          placeholder="http://localhost:3000"
-          value={syncUrl}
-          onChange={(e) => setSyncUrl(e.currentTarget.value)}
-          mb="sm"
-        />
-        <TextInput
-          label="API Key"
-          placeholder="Your API key"
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.currentTarget.value)}
-          mb="sm"
-        />
-        <Group>
-          <Button variant="light" onClick={handleSaveSyncConfig}>
-            Save Config
-          </Button>
-          <Button
-            onClick={handleSyncNow}
-            loading={syncing}
-            disabled={!syncStatus?.configured}
-          >
-            Sync Now
-          </Button>
-        </Group>
-        {syncStatus?.last_sync_time && (
-          <Text size="xs" c="dimmed" mt="sm">
-            Last sync: {new Date(syncStatus.last_sync_time).toLocaleString()}
-          </Text>
+        {isLoggedIn ? (
+          <>
+            <Text size="sm" c="dimmed" mb="sm">
+              Connected to {syncUrl || "cloud sync"}
+            </Text>
+            <Group>
+              <Button
+                onClick={handleSyncNow}
+                loading={syncing}
+              >
+                Sync Now
+              </Button>
+              <Button variant="light" color="red" onClick={handleLogout}>
+                Logout
+              </Button>
+            </Group>
+            {syncStatus?.last_sync_time && (
+              <Text size="xs" c="dimmed" mt="sm">
+                Last sync: {new Date(syncStatus.last_sync_time).toLocaleString()}
+              </Text>
+            )}
+          </>
+        ) : (
+          <>
+            <Text size="sm" c="dimmed" mb="sm">
+              Sign in or create an account to sync your data
+            </Text>
+            <TextInput
+              label="API URL"
+              placeholder="http://localhost:3000"
+              value={syncUrl}
+              onChange={(e) => setSyncUrl(e.currentTarget.value)}
+              mb="sm"
+            />
+            <TextInput
+              label="Email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.currentTarget.value)}
+              mb="sm"
+            />
+            <TextInput
+              label="Password"
+              placeholder="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.currentTarget.value)}
+              mb="sm"
+            />
+            <Group>
+              <Button onClick={handleLogin} loading={authLoading}>
+                Login
+              </Button>
+              <Button variant="light" onClick={handleRegister} loading={authLoading}>
+                Register
+              </Button>
+            </Group>
+          </>
         )}
       </Card>
 

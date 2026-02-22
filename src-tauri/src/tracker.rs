@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use active_win_pos_rs::get_active_window;
+use tauri::Manager;
 use chrono::Local;
 use tokio::time::{Duration, interval};
 use user_idle::UserIdle;
@@ -19,7 +20,8 @@ pub struct TrackerState {
     pub ignored_apps: Vec<String>,
     pub total_continuous_secs: i64,
     pub sync_url: String,
-    pub api_key: String,
+    pub access_token: String,
+    pub refresh_token: String,
     pub escalation_engine: EscalationEngine,
     pub app_handle: Option<tauri::AppHandle>,
     pub idle_threshold_secs: u64,
@@ -37,7 +39,8 @@ impl TrackerState {
             ignored_apps: Vec::new(),
             total_continuous_secs: 0,
             sync_url: String::new(),
-            api_key: String::new(),
+            access_token: String::new(),
+            refresh_token: String::new(),
             escalation_engine: EscalationEngine::new(EscalationSettings::default()),
             app_handle: None,
             idle_threshold_secs: 120, // 2 minutes
@@ -148,6 +151,11 @@ pub fn start_tracking(state: SharedTrackerState) {
             // before calling tick() which requires a mutable borrow.
             if let Some(handle) = tracker.app_handle.clone() {
                 tracker.escalation_engine.tick(&handle, is_idle);
+                // Sync tray menu when pause expires during tick
+                if let Some(tray_items) = handle.try_state::<crate::TrayMenuItems>() {
+                    let is_paused = tracker.escalation_engine.settings.paused_until.is_some();
+                    crate::update_tray_pause_items(&tray_items, is_paused);
+                }
             }
         }
     });

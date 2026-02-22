@@ -13,6 +13,26 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_store::StoreExt;
 
+pub struct TrayMenuItems {
+    pub tracking_toggle: MenuItem<tauri::Wry>,
+    pub pause_1h: MenuItem<tauri::Wry>,
+    pub pause_2h: MenuItem<tauri::Wry>,
+    pub pause_tonight: MenuItem<tauri::Wry>,
+    pub resume: MenuItem<tauri::Wry>,
+}
+
+pub fn update_tray_pause_items(items: &TrayMenuItems, is_paused: bool) {
+    let _ = items.pause_1h.set_enabled(!is_paused);
+    let _ = items.pause_2h.set_enabled(!is_paused);
+    let _ = items.pause_tonight.set_enabled(!is_paused);
+    let _ = items.resume.set_enabled(is_paused);
+}
+
+pub fn update_tray_tracking_item(items: &TrayMenuItems, is_tracking: bool) {
+    let text = if is_tracking { "Pause Tracking" } else { "Resume Tracking" };
+    let _ = items.tracking_toggle.set_text(text);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let tracker_state = Arc::new(Mutex::new(tracker::TrackerState::new()));
@@ -46,8 +66,11 @@ pub fn run() {
                     if let Some(url) = store.get("sync_url").and_then(|v| v.as_str().map(String::from)) {
                         state.sync_url = url;
                     }
-                    if let Some(key) = store.get("api_key").and_then(|v| v.as_str().map(String::from)) {
-                        state.api_key = key;
+                    if let Some(token) = store.get("access_token").and_then(|v| v.as_str().map(String::from)) {
+                        state.access_token = token;
+                    }
+                    if let Some(token) = store.get("refresh_token").and_then(|v| v.as_str().map(String::from)) {
+                        state.refresh_token = token;
                     }
                 }
 
@@ -90,8 +113,31 @@ pub fn run() {
                 MenuItem::with_id(app, "pause_2h", "Pause Escalation 2 hours", true, None::<&str>)?;
             let pause_tonight =
                 MenuItem::with_id(app, "pause_tonight", "Pause Escalation until tomorrow", true, None::<&str>)?;
+            let resume_esc =
+                MenuItem::with_id(app, "resume_esc", "Resume Escalation", false, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &pause_item, &pause_1h, &pause_2h, &pause_tonight, &quit_item])?;
+            let menu = Menu::with_items(app, &[&show_item, &pause_item, &pause_1h, &pause_2h, &pause_tonight, &resume_esc, &quit_item])?;
+
+            // Manage tray menu item handles for dynamic enable/disable
+            let tray_items = TrayMenuItems {
+                tracking_toggle: pause_item.clone(),
+                pause_1h: pause_1h.clone(),
+                pause_2h: pause_2h.clone(),
+                pause_tonight: pause_tonight.clone(),
+                resume: resume_esc.clone(),
+            };
+            // Check initial pause state and set tray items accordingly
+            if let Some(state) = app.try_state::<Arc<Mutex<tracker::TrackerState>>>() {
+                if let Ok(t) = state.lock() {
+                    let is_paused = t.escalation_engine.settings.paused_until.as_ref().map_or(false, |until| {
+                        chrono::DateTime::parse_from_rfc3339(until)
+                            .map(|dt| chrono::Local::now() < dt.with_timezone(&chrono::Local))
+                            .unwrap_or(false)
+                    });
+                    update_tray_pause_items(&tray_items, is_paused);
+                }
+            }
+            app.manage(tray_items);
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -107,6 +153,9 @@ pub fn run() {
                         if let Some(state) = app.try_state::<Arc<Mutex<tracker::TrackerState>>>() {
                             if let Ok(mut t) = state.lock() {
                                 t.is_tracking = !t.is_tracking;
+                                if let Some(tray_items) = app.try_state::<TrayMenuItems>() {
+                                    update_tray_tracking_item(&tray_items, t.is_tracking);
+                                }
                             }
                         }
                     }
@@ -137,6 +186,22 @@ pub fn run() {
                                     let _ = crate::db::save_escalation_settings(&conn, &t.escalation_engine.settings);
                                 }
                             }
+                        }
+                        if let Some(tray_items) = app.try_state::<TrayMenuItems>() {
+                            update_tray_pause_items(&tray_items, true);
+                        }
+                    }
+                    "resume_esc" => {
+                        if let Some(state) = app.try_state::<std::sync::Arc<std::sync::Mutex<crate::tracker::TrackerState>>>() {
+                            if let Ok(mut t) = state.lock() {
+                                t.escalation_engine.settings.paused_until = None;
+                                if let Ok(conn) = crate::db::open_db(&t.db_path) {
+                                    let _ = crate::db::save_escalation_settings(&conn, &t.escalation_engine.settings);
+                                }
+                            }
+                        }
+                        if let Some(tray_items) = app.try_state::<TrayMenuItems>() {
+                            update_tray_pause_items(&tray_items, false);
                         }
                     }
                     "quit" => {
@@ -175,6 +240,7 @@ pub fn run() {
             commands::get_daily_stats,
             commands::get_activity_timeline,
             commands::toggle_tracking,
+            commands::get_tracking,
             commands::get_ignored_apps,
             commands::set_ignored_apps,
             commands::get_reminder_rules,
@@ -182,10 +248,15 @@ pub fn run() {
             commands::delete_reminder_rule,
             commands::toggle_reminder_rule,
             commands::sync_now,
-            commands::set_sync_config,
             commands::get_sync_status,
+            commands::login,
+            commands::register,
+            commands::logout,
+            commands::get_auth_status,
             commands::show_escalation_window,
             commands::dismiss_escalation,
+            commands::acknowledge_popup,
+            commands::get_popup_dismissals,
             commands::get_escalation_settings,
             commands::set_escalation_settings,
             commands::pause_escalation,

@@ -14,6 +14,8 @@ pub struct EscalationEngine {
     pub settings: EscalationSettings,
     pub current_level: EscalationLevel,
     last_level_change: Option<chrono::DateTime<chrono::Local>>,
+    /// Timestamps of popup (Level 2) dismissals in the current session.
+    pub popup_dismissals: Vec<String>,
 }
 
 impl EscalationEngine {
@@ -28,6 +30,7 @@ impl EscalationEngine {
             settings,
             current_level: EscalationLevel::None,
             last_level_change: Some(Local::now()),
+            popup_dismissals: Vec::new(),
         }
     }
 

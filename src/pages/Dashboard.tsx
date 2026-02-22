@@ -11,7 +11,7 @@ import {
 } from "@mantine/core";
 import { DonutChart } from "@mantine/charts";
 import { IconPlayerPlay, IconPlayerPause } from "@tabler/icons-react";
-import { getCurrentApp, getDailyStats, toggleTracking, getEscalationSettings, pauseEscalation } from "../lib/commands";
+import { getCurrentApp, getDailyStats, toggleTracking, getEscalationSettings, pauseEscalation, getTracking } from "../lib/commands";
 import type { CurrentAppInfo, DailyStats, EscalationSettings } from "../lib/types";
 
 function formatDuration(secs: number): string {
@@ -72,15 +72,21 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    const interval = setInterval(async () => {
+    const pollCurrentApp = async () => {
       try {
         setCurrentApp(await getCurrentApp());
       } catch {
         setCurrentApp(null);
       }
+    };
+    const pollTracking = () =>
+      getTracking().then(setIsTracking).catch(() => {});
+    pollCurrentApp();
+    pollTracking();
+    const interval = setInterval(() => {
+      pollCurrentApp();
+      pollTracking();
     }, 5000);
-    // Fetch immediately
-    getCurrentApp().then(setCurrentApp).catch(() => setCurrentApp(null));
     return () => clearInterval(interval);
   }, []);
 
@@ -91,7 +97,10 @@ export default function Dashboard() {
         .catch(() => {});
     fetchStats();
     loadEscSettings();
-    const interval = setInterval(fetchStats, 15000);
+    const interval = setInterval(() => {
+      fetchStats();
+      loadEscSettings();
+    }, 15000);
     return () => clearInterval(interval);
   }, [today]);
 

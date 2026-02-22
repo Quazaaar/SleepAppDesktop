@@ -26,6 +26,10 @@ export async function toggleTracking(): Promise<boolean> {
   return invoke("toggle_tracking");
 }
 
+export async function getTracking(): Promise<boolean> {
+  return invoke("get_tracking");
+}
+
 export async function getIgnoredApps(): Promise<string[]> {
   return invoke("get_ignored_apps");
 }
@@ -57,15 +61,32 @@ export async function syncNow(): Promise<number> {
   return invoke("sync_now");
 }
 
-export async function setSyncConfig(
-  syncUrl: string,
-  apiKey: string
-): Promise<void> {
-  return invoke("set_sync_config", { syncUrl, apiKey });
-}
-
 export async function getSyncStatus(): Promise<SyncStatus> {
   return invoke("get_sync_status");
+}
+
+export async function login(
+  syncUrl: string,
+  email: string,
+  password: string
+): Promise<void> {
+  return invoke("login", { syncUrl, email, password });
+}
+
+export async function register(
+  syncUrl: string,
+  email: string,
+  password: string
+): Promise<void> {
+  return invoke("register", { syncUrl, email, password });
+}
+
+export async function logout(): Promise<void> {
+  return invoke("logout");
+}
+
+export async function getAuthStatus(): Promise<boolean> {
+  return invoke("get_auth_status");
 }
 
 export async function showEscalationWindow(level: string): Promise<void> {
@@ -74,6 +95,14 @@ export async function showEscalationWindow(level: string): Promise<void> {
 
 export async function dismissEscalation(): Promise<void> {
   return invoke("dismiss_escalation");
+}
+
+export async function acknowledgePopup(): Promise<number> {
+  return invoke("acknowledge_popup");
+}
+
+export async function getPopupDismissals(): Promise<string[]> {
+  return invoke("get_popup_dismissals");
 }
 
 export async function getEscalationSettings(): Promise<EscalationSettings> {

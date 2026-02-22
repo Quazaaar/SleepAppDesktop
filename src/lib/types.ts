@@ -37,11 +37,6 @@ export interface DailyStats {
   most_used_app: string;
 }
 
-export interface SyncConfig {
-  sync_url: string;
-  api_key: string;
-}
-
 export interface SyncStatus {
   configured: boolean;
   last_sync_time: string | null;
