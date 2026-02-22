@@ -444,7 +444,9 @@ pub fn get_app_categories(conn: &Connection) -> Result<Vec<AppCategoryEntry>> {
 
 pub fn set_app_category(conn: &Connection, app_name: &str, category: &str) -> Result<()> {
     conn.execute(
-        "INSERT OR REPLACE INTO app_categories (app_name, category, is_default) VALUES (?1, ?2, 0)",
+        "INSERT INTO app_categories (app_name, category, is_default)
+         VALUES (?1, ?2, 0)
+         ON CONFLICT(app_name) DO UPDATE SET category = ?2, is_default = 0",
         params![app_name.to_lowercase(), category],
     )?;
     Ok(())
