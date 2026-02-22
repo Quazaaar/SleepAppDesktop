@@ -2,7 +2,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, Result, params};
 
-use crate::models::{ActivitySession, AppUsageStat, DailyStats, EscalationSettings, ReminderRule};
+use crate::models::{ActivitySession, AppCategoryEntry, AppUsageStat, DailyStats, EscalationSettings, ReminderRule, TitleKeywordRule};
 
 pub fn open_db(db_path: &str) -> Result<Connection> {
     Connection::open(db_path)
@@ -55,8 +55,28 @@ pub fn init_db(db_path: &Path) -> Result<()> {
         CREATE TABLE IF NOT EXISTS ignored_apps (
             app_name TEXT PRIMARY KEY NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS app_categories (
+            app_name TEXT PRIMARY KEY NOT NULL,
+            category TEXT NOT NULL DEFAULT 'uncategorized',
+            last_seen TEXT,
+            is_default INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS title_keyword_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            app_name TEXT NOT NULL,
+            keyword TEXT NOT NULL,
+            category TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_keyword_rules_app ON title_keyword_rules(app_name);
         ",
     )?;
+
+    // Add multiplier columns to escalation_settings — silently ignore duplicate column errors
+    let _ = conn.execute("ALTER TABLE escalation_settings ADD COLUMN productive_multiplier REAL NOT NULL DEFAULT 0.5", []);
+    let _ = conn.execute("ALTER TABLE escalation_settings ADD COLUMN distracting_multiplier REAL NOT NULL DEFAULT 1.5", []);
 
     // Seed default reminder rules if table is empty
     let count: i64 = conn.query_row(
@@ -76,6 +96,71 @@ pub fn init_db(db_path: &Path) -> Result<()> {
         )?;
     }
 
+    // Seed default app categories if table is empty
+    let cat_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM app_categories",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if cat_count == 0 {
+        // Productive apps
+        for app_name in &["code", "rider", "idea64", "pycharm64", "vim", "nvim", "windowsterminal", "winword", "excel"] {
+            conn.execute(
+                "INSERT INTO app_categories (app_name, category, last_seen, is_default) VALUES (?1, 'productive', NULL, 1)",
+                params![app_name],
+            )?;
+        }
+        // Neutral apps
+        for app_name in &["slack", "teams", "discord", "outlook", "explorer", "finder"] {
+            conn.execute(
+                "INSERT INTO app_categories (app_name, category, last_seen, is_default) VALUES (?1, 'neutral', NULL, 1)",
+                params![app_name],
+            )?;
+        }
+        // Distracting apps
+        for app_name in &["netflix", "steam"] {
+            conn.execute(
+                "INSERT INTO app_categories (app_name, category, last_seen, is_default) VALUES (?1, 'distracting', NULL, 1)",
+                params![app_name],
+            )?;
+        }
+    }
+
+    // Seed default title keyword rules if table is empty
+    let rule_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM title_keyword_rules",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if rule_count == 0 {
+        // Distracting keyword rules
+        let distracting_rules = [
+            ("chrome", "youtube"), ("chrome", "netflix"), ("chrome", "reddit"),
+            ("chrome", "twitter"), ("chrome", "tiktok"), ("chrome", "instagram"),
+            ("chrome", "facebook"), ("firefox", "youtube"), ("firefox", "netflix"),
+            ("firefox", "reddit"), ("msedge", "youtube"), ("msedge", "netflix"),
+        ];
+        for (app, keyword) in &distracting_rules {
+            conn.execute(
+                "INSERT INTO title_keyword_rules (app_name, keyword, category) VALUES (?1, ?2, 'distracting')",
+                params![app, keyword],
+            )?;
+        }
+        // Productive keyword rules
+        let productive_rules = [
+            ("chrome", "github"), ("chrome", "gitlab"), ("chrome", "stackoverflow"),
+            ("chrome", "localhost"), ("firefox", "github"), ("msedge", "github"),
+        ];
+        for (app, keyword) in &productive_rules {
+            conn.execute(
+                "INSERT INTO title_keyword_rules (app_name, keyword, category) VALUES (?1, ?2, 'productive')",
+                params![app, keyword],
+            )?;
+        }
+    }
+
     Ok(())
 }
 
@@ -90,6 +175,12 @@ pub fn insert_session(conn: &Connection, session: &ActivitySession) -> Result<()
             session.duration_secs,
             session.date,
         ],
+    )?;
+    conn.execute(
+        "INSERT INTO app_categories (app_name, last_seen)
+         VALUES (?1, ?2)
+         ON CONFLICT(app_name) DO UPDATE SET last_seen = ?2",
+        params![session.app_name.to_lowercase(), session.end_time],
     )?;
     Ok(())
 }
@@ -294,7 +385,8 @@ pub fn save_ignored_apps(conn: &Connection, apps: &[String]) -> Result<()> {
 
 pub fn get_escalation_settings(conn: &Connection) -> Result<EscalationSettings> {
     conn.query_row(
-        "SELECT green_end_hour, yellow_end_hour, sensitivity, enabled, paused_until
+        "SELECT green_end_hour, yellow_end_hour, sensitivity, enabled, paused_until,
+                productive_multiplier, distracting_multiplier
          FROM escalation_settings WHERE id = 1",
         [],
         |row| {
@@ -304,6 +396,8 @@ pub fn get_escalation_settings(conn: &Connection) -> Result<EscalationSettings> 
                 sensitivity: row.get(2)?,
                 enabled: row.get::<_, i64>(3)? != 0,
                 paused_until: row.get(4)?,
+                productive_multiplier: row.get(5)?,
+                distracting_multiplier: row.get(6)?,
             })
         },
     )
@@ -312,14 +406,97 @@ pub fn get_escalation_settings(conn: &Connection) -> Result<EscalationSettings> 
 pub fn save_escalation_settings(conn: &Connection, settings: &EscalationSettings) -> Result<()> {
     conn.execute(
         "UPDATE escalation_settings SET green_end_hour = ?1, yellow_end_hour = ?2,
-         sensitivity = ?3, enabled = ?4, paused_until = ?5 WHERE id = 1",
+         sensitivity = ?3, enabled = ?4, paused_until = ?5,
+         productive_multiplier = ?6, distracting_multiplier = ?7 WHERE id = 1",
         params![
             settings.green_end_hour,
             settings.yellow_end_hour,
             settings.sensitivity,
             settings.enabled as i64,
             settings.paused_until,
+            settings.productive_multiplier,
+            settings.distracting_multiplier,
         ],
     )?;
     Ok(())
+}
+
+// App category CRUD
+
+pub fn get_app_categories(conn: &Connection) -> Result<Vec<AppCategoryEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT app_name, category, last_seen FROM app_categories
+         WHERE last_seen IS NOT NULL
+         ORDER BY CASE WHEN category = 'uncategorized' THEN 0 ELSE 1 END ASC,
+                  category ASC, app_name ASC",
+    )?;
+    let entries = stmt
+        .query_map([], |row| {
+            Ok(AppCategoryEntry {
+                app_name: row.get(0)?,
+                category: row.get(1)?,
+                last_seen: row.get(2)?,
+            })
+        })?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(entries)
+}
+
+pub fn set_app_category(conn: &Connection, app_name: &str, category: &str) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO app_categories (app_name, category, is_default) VALUES (?1, ?2, 0)",
+        params![app_name.to_lowercase(), category],
+    )?;
+    Ok(())
+}
+
+pub fn get_all_app_categories_for_cache(conn: &Connection) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare("SELECT app_name, category FROM app_categories")?;
+    let pairs = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(pairs)
+}
+
+pub fn get_title_keyword_rules(conn: &Connection) -> Result<Vec<TitleKeywordRule>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, app_name, keyword, category FROM title_keyword_rules ORDER BY app_name ASC, keyword ASC",
+    )?;
+    let rules = stmt
+        .query_map([], |row| {
+            Ok(TitleKeywordRule {
+                id: Some(row.get(0)?),
+                app_name: row.get(1)?,
+                keyword: row.get(2)?,
+                category: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(rules)
+}
+
+pub fn add_title_keyword_rule(
+    conn: &Connection,
+    app_name: &str,
+    keyword: &str,
+    category: &str,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO title_keyword_rules (app_name, keyword, category) VALUES (?1, ?2, ?3)",
+        params![app_name.to_lowercase(), keyword.to_lowercase(), category],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn delete_title_keyword_rule(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM title_keyword_rules WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn get_uncategorized_count(conn: &Connection) -> Result<i64> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM app_categories WHERE category = 'uncategorized' AND last_seen IS NOT NULL",
+        [],
+        |row| row.get(0),
+    )
 }

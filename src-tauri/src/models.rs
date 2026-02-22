@@ -19,6 +19,8 @@ pub struct EscalationSettings {
     pub sensitivity: f32,           // 0.0 (gentle/slow) to 1.0 (aggressive/fast)
     pub enabled: bool,
     pub paused_until: Option<String>, // RFC3339 timestamp or None
+    pub productive_multiplier: f32,   // <1.0 = slower escalation when productive
+    pub distracting_multiplier: f32,  // >1.0 = faster escalation when distracted
 }
 
 impl Default for EscalationSettings {
@@ -29,6 +31,8 @@ impl Default for EscalationSettings {
             sensitivity: 0.5,
             enabled: true,
             paused_until: None,
+            productive_multiplier: 0.5,
+            distracting_multiplier: 1.5,
         }
     }
 }
@@ -40,6 +44,21 @@ pub struct EscalationStatePayload {
 }
 
 // --- End escalation types ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppCategoryEntry {
+    pub app_name: String,
+    pub category: String,
+    pub last_seen: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TitleKeywordRule {
+    pub id: Option<i64>,
+    pub app_name: String,
+    pub keyword: String,
+    pub category: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityLog {
