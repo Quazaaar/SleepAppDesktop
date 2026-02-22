@@ -42,7 +42,7 @@ export default function Layout({ children }: LayoutProps) {
   useEffect(() => {
     const load = () => getUncategorizedCount().then(setUncatCount).catch(() => {});
     load();
-    const id = setInterval(load, 60000);
+    const id = setInterval(load, 5000);
     return () => clearInterval(id);
   }, []);
 

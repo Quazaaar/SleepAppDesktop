@@ -86,7 +86,7 @@ export default function Dashboard() {
     const interval = setInterval(() => {
       pollCurrentApp();
       pollTracking();
-    }, 5000);
+    }, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -100,7 +100,7 @@ export default function Dashboard() {
     const interval = setInterval(() => {
       fetchStats();
       loadEscSettings();
-    }, 15000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [today]);
 

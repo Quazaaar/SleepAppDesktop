@@ -81,7 +81,7 @@ pub type SharedTrackerState = Arc<Mutex<TrackerState>>;
 
 pub fn start_tracking(state: SharedTrackerState) {
     tauri::async_runtime::spawn(async move {
-        let mut ticker = interval(Duration::from_secs(5));
+        let mut ticker = interval(Duration::from_secs(2));
         loop {
             ticker.tick().await;
 
@@ -116,7 +116,7 @@ pub fn start_tracking(state: SharedTrackerState) {
             let today = now.format("%Y-%m-%d").to_string();
 
             // Update total continuous screen time
-            tracker.total_continuous_secs += 5;
+            tracker.total_continuous_secs += 2;
 
             let app_changed = tracker
                 .current_session_app
@@ -167,7 +167,7 @@ pub fn start_tracking(state: SharedTrackerState) {
             } else {
                 // Same app — update duration
                 if let Some(ref mut info) = tracker.current_app {
-                    info.duration_secs += 5;
+                    info.duration_secs += 2;
                     info.window_title = window_title;
                 }
             }

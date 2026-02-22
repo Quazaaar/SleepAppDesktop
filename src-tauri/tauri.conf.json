@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Sleep App — Productivity Tracker",
-        "width": 1080,
-        "height": 720,
+        "width": 1280,
+        "height": 820,
         "visible": false,
         "decorations": false,
         "resizable": true,

@@ -34,7 +34,7 @@ impl EscalationEngine {
         }
     }
 
-    /// Called every 5 seconds from the tracker loop.
+    /// Called every 2 seconds from the tracker loop.
     ///
     /// `is_idle` — true when the OS reports no keyboard/mouse activity for
     /// the configured idle threshold.
