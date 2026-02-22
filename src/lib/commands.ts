@@ -6,6 +6,8 @@ import type {
   ReminderRule,
   SyncStatus,
   EscalationSettings,
+  AppCategoryEntry,
+  TitleKeywordRule,
 } from "./types";
 
 export async function getCurrentApp(): Promise<CurrentAppInfo> {
@@ -119,4 +121,28 @@ export async function pauseEscalation(hours: number | null): Promise<void> {
 
 export async function testReminderNotification(message: string): Promise<void> {
   return invoke("test_reminder_notification", { message });
+}
+
+export async function getAppCategories(): Promise<AppCategoryEntry[]> {
+  return invoke("get_app_categories");
+}
+
+export async function setAppCategory(appName: string, category: string): Promise<void> {
+  return invoke("set_app_category", { appName, category });
+}
+
+export async function getTitleKeywordRules(): Promise<TitleKeywordRule[]> {
+  return invoke("get_title_keyword_rules");
+}
+
+export async function addTitleKeywordRule(appName: string, keyword: string, category: string): Promise<number> {
+  return invoke("add_title_keyword_rule", { appName, keyword, category });
+}
+
+export async function deleteTitleKeywordRule(id: number): Promise<void> {
+  return invoke("delete_title_keyword_rule", { id });
+}
+
+export async function getUncategorizedCount(): Promise<number> {
+  return invoke("get_uncategorized_count");
 }

@@ -55,4 +55,21 @@ export interface EscalationSettings {
   sensitivity: number;
   enabled: boolean;
   paused_until: string | null;
+  productive_multiplier: number;
+  distracting_multiplier: number;
+}
+
+export type AppCategory = "productive" | "neutral" | "distracting" | "uncategorized";
+
+export interface AppCategoryEntry {
+  app_name: string;
+  category: string;
+  last_seen: string | null;
+}
+
+export interface TitleKeywordRule {
+  id: number | null;
+  app_name: string;
+  keyword: string;
+  category: string;
 }
