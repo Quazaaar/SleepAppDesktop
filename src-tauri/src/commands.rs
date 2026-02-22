@@ -253,7 +253,10 @@ pub async fn sync_now(
         }
     }
 
-    Ok(result.count)
+    // Sync wrap-up notes after session sync (tokens already fresh if refresh was needed)
+    let notes_count = client.sync_notes(&db_path).await.unwrap_or(0);
+
+    Ok(result.count + notes_count)
 }
 
 #[tauri::command]

@@ -565,6 +565,23 @@ pub fn get_latest_wrap_up_note(conn: &Connection) -> Result<Option<WrapUpNote>> 
     }
 }
 
+pub fn get_all_wrap_up_notes(conn: &Connection) -> Result<Vec<WrapUpNote>> {
+    let mut stmt = conn.prepare(
+        "SELECT session_key, working_on, next_steps, created_at FROM wrap_up_notes ORDER BY created_at ASC",
+    )?;
+    let notes = stmt
+        .query_map([], |row| {
+            Ok(WrapUpNote {
+                session_key: row.get(0)?,
+                working_on: row.get(1)?,
+                next_steps: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(notes)
+}
+
 pub fn get_note_by_session_key(conn: &Connection, session_key: &str) -> Result<Option<WrapUpNote>> {
     let result = conn.query_row(
         "SELECT session_key, working_on, next_steps, created_at

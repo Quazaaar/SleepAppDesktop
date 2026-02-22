@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use crate::db;
-use crate::models::ActivitySession;
+use crate::models::{ActivitySession, WrapUpNote};
 
 #[derive(Deserialize)]
 struct AuthResponse {
@@ -119,6 +119,28 @@ impl SyncClient {
             let status = response.status().to_string();
             db::log_sync(&conn, 0, "failed").map_err(|e| e.to_string())?;
             Err(format!("Sync failed with status: {}", status))
+        }
+    }
+
+    pub async fn sync_notes(&self, db_path: &str) -> Result<usize, String> {
+        let conn = db::open_db(db_path).map_err(|e| e.to_string())?;
+        let notes: Vec<WrapUpNote> = db::get_all_wrap_up_notes(&conn).map_err(|e| e.to_string())?;
+        if notes.is_empty() {
+            return Ok(0);
+        }
+        let count = notes.len();
+        let resp = self
+            .client
+            .post(format!("{}/api/notes/sync", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .json(&notes)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if resp.status().is_success() {
+            Ok(count)
+        } else {
+            Err(format!("Notes sync failed: {}", resp.status()))
         }
     }
 }
