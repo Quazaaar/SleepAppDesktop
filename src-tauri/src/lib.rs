@@ -278,6 +278,9 @@ pub fn run() {
             commands::add_title_keyword_rule,
             commands::delete_title_keyword_rule,
             commands::get_uncategorized_count,
+            commands::save_wrap_up_note,
+            commands::get_latest_wrap_up_note,
+            commands::get_current_session_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

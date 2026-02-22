@@ -28,6 +28,7 @@ pub struct TrackerState {
     pub idle_threshold_secs: u64,
     pub app_categories: HashMap<String, String>,
     pub title_keyword_rules: Vec<(String, String, String)>,
+    pub current_session_key: Option<String>,
 }
 
 impl TrackerState {
@@ -49,6 +50,7 @@ impl TrackerState {
             idle_threshold_secs: 120, // 2 minutes
             app_categories: HashMap::new(),
             title_keyword_rules: Vec::new(),
+            current_session_key: None,
         }
     }
 }

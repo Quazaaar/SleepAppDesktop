@@ -2,7 +2,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, Result, params};
 
-use crate::models::{ActivitySession, AppCategoryEntry, AppUsageStat, DailyStats, EscalationSettings, ReminderRule, TitleKeywordRule};
+use crate::models::{ActivitySession, AppCategoryEntry, AppUsageStat, DailyStats, EscalationSettings, ReminderRule, TitleKeywordRule, WrapUpNote};
 
 pub fn open_db(db_path: &str) -> Result<Connection> {
     Connection::open(db_path)
@@ -71,8 +71,27 @@ pub fn init_db(db_path: &Path) -> Result<()> {
         );
 
         CREATE INDEX IF NOT EXISTS idx_keyword_rules_app ON title_keyword_rules(app_name);
+
+        CREATE TABLE IF NOT EXISTS wrap_up_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_key TEXT NOT NULL UNIQUE,
+            working_on TEXT NOT NULL DEFAULT '',
+            next_steps TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_notes_created ON wrap_up_notes(created_at DESC);
         ",
     )?;
+
+    // 30-day cleanup for wrap_up_notes — runs on every startup
+    {
+        let cutoff = (chrono::Local::now() - chrono::Duration::days(30)).to_rfc3339();
+        let _ = conn.execute(
+            "DELETE FROM wrap_up_notes WHERE created_at < ?1",
+            params![cutoff],
+        );
+    }
 
     // Add multiplier columns to escalation_settings — silently ignore duplicate column errors
     let _ = conn.execute("ALTER TABLE escalation_settings ADD COLUMN productive_multiplier REAL NOT NULL DEFAULT 0.5", []);
@@ -501,4 +520,69 @@ pub fn get_uncategorized_count(conn: &Connection) -> Result<i64> {
         [],
         |row| row.get(0),
     )
+}
+
+// Wrap-up notes CRUD
+
+pub fn save_wrap_up_note(
+    conn: &Connection,
+    session_key: &str,
+    working_on: &str,
+    next_steps: &str,
+) -> Result<()> {
+    let now = chrono::Local::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO wrap_up_notes (session_key, working_on, next_steps, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?4)
+         ON CONFLICT(session_key) DO UPDATE SET working_on = ?2, next_steps = ?3, updated_at = ?4",
+        params![session_key, working_on, next_steps, now],
+    )?;
+    Ok(())
+}
+
+pub fn get_latest_wrap_up_note(conn: &Connection) -> Result<Option<WrapUpNote>> {
+    let cutoff = (chrono::Local::now() - chrono::Duration::days(3)).to_rfc3339();
+    let result = conn.query_row(
+        "SELECT session_key, working_on, next_steps, created_at
+         FROM wrap_up_notes
+         WHERE created_at >= ?1 AND (TRIM(working_on) != '' OR TRIM(next_steps) != '')
+         ORDER BY created_at DESC
+         LIMIT 1",
+        params![cutoff],
+        |row| {
+            Ok(WrapUpNote {
+                session_key: row.get(0)?,
+                working_on: row.get(1)?,
+                next_steps: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        },
+    );
+    match result {
+        Ok(note) => Ok(Some(note)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn get_note_by_session_key(conn: &Connection, session_key: &str) -> Result<Option<WrapUpNote>> {
+    let result = conn.query_row(
+        "SELECT session_key, working_on, next_steps, created_at
+         FROM wrap_up_notes
+         WHERE session_key = ?1",
+        params![session_key],
+        |row| {
+            Ok(WrapUpNote {
+                session_key: row.get(0)?,
+                working_on: row.get(1)?,
+                next_steps: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        },
+    );
+    match result {
+        Ok(note) => Ok(Some(note)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
 }

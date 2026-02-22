@@ -120,3 +120,11 @@ pub struct SyncStatus {
     pub configured: bool,
     pub last_sync_time: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WrapUpNote {
+    pub session_key: String,
+    pub working_on: String,
+    pub next_steps: String,
+    pub created_at: String, // RFC3339
+}

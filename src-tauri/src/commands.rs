@@ -268,7 +268,11 @@ pub fn get_sync_status(state: State<SharedTrackerState>) -> Result<SyncStatus, S
 }
 
 #[tauri::command]
-pub async fn show_escalation_window(app: tauri::AppHandle, level: String) -> Result<(), String> {
+pub async fn show_escalation_window(
+    app: tauri::AppHandle,
+    state: State<'_, SharedTrackerState>,
+    level: String,
+) -> Result<(), String> {
     // Close any existing escalation windows before creating a new one.
     // This prevents window accumulation when the level advances (Pitfall 4).
     // For the popup, persist its position/size before closing so we can restore it.
@@ -330,6 +334,14 @@ pub async fn show_escalation_window(app: tauri::AppHandle, level: String) -> Res
             builder.build().map_err(|e| e.to_string())?;
         }
         "Level3" => {
+            // Generate session key on first L3 appearance for this escalation cycle
+            {
+                let mut tracker = state.lock().map_err(|e| e.to_string())?;
+                if tracker.current_session_key.is_none() {
+                    tracker.current_session_key = Some(chrono::Local::now().to_rfc3339());
+                }
+            }
+
             let (width, height) = app
                 .primary_monitor()
                 .ok()
@@ -383,10 +395,11 @@ pub async fn dismiss_escalation(
     app: tauri::AppHandle,
     state: State<'_, SharedTrackerState>,
 ) -> Result<(), String> {
-    // Set engine to Done and emit the event.
+    // Set engine to Done and emit the event. Clear session key for next escalation cycle.
     {
         let mut tracker = state.lock().map_err(|e| e.to_string())?;
         tracker.escalation_engine.dismiss(&app);
+        tracker.current_session_key = None;
     }
 
     // Close all escalation overlay windows.
@@ -526,6 +539,37 @@ pub fn test_reminder_notification(app: tauri::AppHandle, message: String) -> Res
         .body(&message)
         .show()
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_wrap_up_note(
+    state: State<SharedTrackerState>,
+    working_on: String,
+    next_steps: String,
+) -> Result<(), String> {
+    let tracker = state.lock().map_err(|e| e.to_string())?;
+    let session_key = tracker
+        .current_session_key
+        .clone()
+        .ok_or_else(|| "No active session key — L3 escalation not started".to_string())?;
+    let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
+    db::save_wrap_up_note(&conn, &session_key, &working_on, &next_steps)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_latest_wrap_up_note(
+    state: State<SharedTrackerState>,
+) -> Result<Option<crate::models::WrapUpNote>, String> {
+    let tracker = state.lock().map_err(|e| e.to_string())?;
+    let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
+    db::get_latest_wrap_up_note(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_current_session_key(state: State<SharedTrackerState>) -> Result<Option<String>, String> {
+    let tracker = state.lock().map_err(|e| e.to_string())?;
+    Ok(tracker.current_session_key.clone())
 }
 
 #[tauri::command]
