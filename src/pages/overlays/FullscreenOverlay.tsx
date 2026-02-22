@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, Stack, Title, Text, Textarea, Button } from "@mantine/core";
 import { motion } from "framer-motion";
 import { useEscalationState } from "../../hooks/useEscalationState";
-import { dismissEscalation } from "../../lib/commands";
+import { dismissEscalation, saveWrapUpNote, getLatestWrapUpNote, getCurrentSessionKey } from "../../lib/commands";
 
 /**
  * Level 4 fullscreen overlay — rendered in the maximized transparent
@@ -13,7 +13,8 @@ import { dismissEscalation } from "../../lib/commands";
  *   1. Sets escalation engine to Done (no more reminders tonight).
  *   2. Closes the fullscreen window.
  *
- * Note: Note persistence is deferred to Phase 3 (SQLite wiring).
+ * Notes are persisted to SQLite via save_wrap_up_note before dismissal.
+ * Fields are pre-filled from Panel's saved note if one exists.
  */
 export default function FullscreenOverlay() {
   const { message } = useEscalationState();
@@ -21,14 +22,33 @@ export default function FullscreenOverlay() {
   const [nextSteps, setNextSteps] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    async function loadExistingNote() {
+      try {
+        const sessionKey = await getCurrentSessionKey();
+        if (sessionKey) {
+          const note = await getLatestWrapUpNote();
+          if (note && note.session_key === sessionKey) {
+            setWorkingOn(note.working_on);
+            setNextSteps(note.next_steps);
+          }
+        }
+      } catch {
+        // no note yet — fields stay empty
+      }
+    }
+    loadExistingNote();
+  }, []);
+
   async function handleSubmit() {
     setSubmitting(true);
-    // Phase 3 will persist these to SQLite.
-    console.log("[FullscreenOverlay] Wrap-up notes:", { workingOn, nextSteps });
     try {
+      if (workingOn.trim() || nextSteps.trim()) {
+        await saveWrapUpNote(workingOn.trim(), nextSteps.trim());
+      }
       await dismissEscalation();
     } catch (err) {
-      console.error("[FullscreenOverlay] dismissEscalation failed:", err);
+      console.error("[FullscreenOverlay] submit failed:", err);
       setSubmitting(false);
     }
   }

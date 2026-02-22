@@ -73,3 +73,10 @@ export interface TitleKeywordRule {
   keyword: string;
   category: string;
 }
+
+export interface WrapUpNote {
+  session_key: string;
+  working_on: string;
+  next_steps: string;
+  created_at: string;
+}

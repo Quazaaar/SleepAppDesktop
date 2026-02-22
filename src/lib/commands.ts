@@ -8,6 +8,7 @@ import type {
   EscalationSettings,
   AppCategoryEntry,
   TitleKeywordRule,
+  WrapUpNote,
 } from "./types";
 
 export async function getCurrentApp(): Promise<CurrentAppInfo> {
@@ -145,4 +146,16 @@ export async function deleteTitleKeywordRule(id: number): Promise<void> {
 
 export async function getUncategorizedCount(): Promise<number> {
   return invoke("get_uncategorized_count");
+}
+
+export async function saveWrapUpNote(workingOn: string, nextSteps: string): Promise<void> {
+  return invoke("save_wrap_up_note", { workingOn, nextSteps });
+}
+
+export async function getLatestWrapUpNote(): Promise<WrapUpNote | null> {
+  return invoke("get_latest_wrap_up_note");
+}
+
+export async function getCurrentSessionKey(): Promise<string | null> {
+  return invoke("get_current_session_key");
 }

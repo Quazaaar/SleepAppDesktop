@@ -15,12 +15,6 @@ async function close() {
   await getCurrentWindow().close();
 }
 
-async function isMaximized() {
-  const { getCurrentWindow } = await import("@tauri-apps/api/window");
-  return await getCurrentWindow().isMaximized();
-}
-
-
 export default function TitleBar() {
   return (
     <div data-tauri-drag-region className="titlebar">
