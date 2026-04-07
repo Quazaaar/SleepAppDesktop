@@ -10,6 +10,7 @@ import EscalationToastHandler from "./pages/overlays/EscalationToastHandler";
 import PopupOverlay from "./pages/overlays/PopupOverlay";
 import PanelOverlay from "./pages/overlays/PanelOverlay";
 import FullscreenOverlay from "./pages/overlays/FullscreenOverlay";
+import ResumeOverlay from "./pages/overlays/ResumeOverlay";
 
 const pageVariants = {
   initial: { opacity: 0, y: 10 },
@@ -37,6 +38,7 @@ function App() {
         <Route path="/overlay/popup" element={<PopupOverlay />} />
         <Route path="/overlay/panel" element={<PanelOverlay />} />
         <Route path="/overlay/fullscreen" element={<FullscreenOverlay />} />
+        <Route path="/overlay/resume" element={<ResumeOverlay />} />
 
         {/* Main app routes — all other paths get the full Layout + animated pages */}
         <Route

@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window and escalation overlay windows",
-  "windows": ["main", "escalation-popup", "escalation-panel", "escalation-fullscreen"],
+  "windows": ["main", "escalation-popup", "escalation-panel", "escalation-fullscreen", "resume-notes"],
   "permissions": [
     "core:default",
     "opener:default",

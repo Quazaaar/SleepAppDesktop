@@ -113,6 +113,36 @@ pub fn run() {
                 }
             }
 
+            // Show resume-notes popup if a recent wrap-up note exists
+            {
+                let db_path = db_path.clone();
+                let app_handle = app.handle().clone();
+                if let Ok(conn) = db::open_db(&db_path.to_string_lossy()) {
+                    if let Ok(Some(_)) = db::get_latest_wrap_up_note(&conn) {
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                            let handle = app_handle.clone();
+                            let _ = app_handle.run_on_main_thread(move || {
+                                use tauri::WebviewUrl;
+                                use tauri::webview::WebviewWindowBuilder;
+                                let _ = WebviewWindowBuilder::new(
+                                    &handle,
+                                    "resume-notes",
+                                    WebviewUrl::App("/#/overlay/resume".into()),
+                                )
+                                .title("LucidShift — Resume Notes")
+                                .inner_size(340.0, 220.0)
+                                .decorations(false)
+                                .always_on_top(true)
+                                .skip_taskbar(true)
+                                .resizable(true)
+                                .build();
+                            });
+                        });
+                    }
+                }
+            }
+
             // Build system tray
             let show_item =
                 MenuItem::with_id(app, "show", "Show Dashboard", true, None::<&str>)?;

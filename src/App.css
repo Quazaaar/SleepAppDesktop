@@ -219,3 +219,40 @@ body {
   opacity: 0;
   max-height: 0;
 }
+
+/* ── Productivity Score (crash-game style) ──────────────────── */
+
+.crash-score-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0;
+}
+
+.crash-score-number {
+  font-size: 2.2rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--mantine-color-text);
+  font-family: var(--mantine-font-family);
+}
+
+.crash-score-multiplier {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-top: 0.35rem;
+  opacity: 0.8;
+  color: var(--mantine-color-dimmed);
+  font-family: var(--mantine-font-family);
+}
+
+.crash-score-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.5;
+  margin-top: 0.2rem;
+}
