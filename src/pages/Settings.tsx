@@ -13,7 +13,6 @@ import {
   Table,
   ActionIcon,
   Modal,
-  SegmentedControl,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { IconPlayerPlay, IconPlus, IconTrash } from "@tabler/icons-react";
@@ -35,12 +34,11 @@ import {
 import type { ReminderRule, SyncStatus } from "../lib/types";
 import { notifications } from "@mantine/notifications";
 import { load } from "@tauri-apps/plugin-store";
-import { useAppTheme } from "../context/ThemeContext";
-import type { AppThemeId } from "../lib/theme";
+import { useNavigate } from "react-router-dom";
 import { EscalationSettingsCard } from "../components/EscalationSettingsCard";
 
 export default function Settings() {
-  const { themeId, setTheme } = useAppTheme();
+  const navigate = useNavigate();
   const [rules, setRules] = useState<ReminderRule[]>([]);
   const [ignoredApps, setIgnoredAppsState] = useState<string[]>([]);
   const [newIgnored, setNewIgnored] = useState("");
@@ -202,24 +200,17 @@ export default function Settings() {
     <Stack>
       <Title order={2}>Settings</Title>
 
-      {/* Appearance */}
+      {/* Appearance link */}
       <Card shadow="sm" padding="lg" radius="md" withBorder>
-        <Title order={4} mb="md">
-          Appearance
-        </Title>
-        <Text size="sm" c="dimmed" mb="sm">
-          Choose a theme for the app
-        </Text>
-        <SegmentedControl
-          fullWidth
-          value={themeId}
-          onChange={(val) => setTheme(val as AppThemeId)}
-          data={[
-            { value: "glass-dark", label: "Glass Dark" },
-            { value: "glass-light", label: "Glass Light" },
-            { value: "solid-minimal", label: "Solid Minimal" },
-          ]}
-        />
+        <Group justify="space-between" align="center">
+          <div>
+            <Title order={4}>Appearance</Title>
+            <Text size="sm" c="dimmed">Theme presets, custom backgrounds, and component previews</Text>
+          </div>
+          <Button variant="light" onClick={() => navigate("/theme")}>
+            Open Theme
+          </Button>
+        </Group>
       </Card>
 
       {/* Escalation Settings */}

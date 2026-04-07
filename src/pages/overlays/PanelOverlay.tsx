@@ -5,6 +5,7 @@ import { IconClock } from "@tabler/icons-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEscalationState } from "../../hooks/useEscalationState";
 import { saveWrapUpNote } from "../../lib/commands";
+import { useAppTheme } from "../../context/ThemeContext";
 
 /**
  * Level 3 side panel overlay — rendered in the tall "escalation-panel" window
@@ -19,6 +20,8 @@ import { saveWrapUpNote } from "../../lib/commands";
  */
 export default function PanelOverlay() {
   const { message } = useEscalationState();
+  const { escalationBgs } = useAppTheme();
+  const bg = escalationBgs["Level3"];
   const [workingOn, setWorkingOn] = useState("");
   const [nextSteps, setNextSteps] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -51,6 +54,12 @@ export default function PanelOverlay() {
         alignItems: "center",
         justifyContent: "center",
         padding: "2rem",
+        ...(bg && {
+          backgroundImage: `url(${bg.image})`,
+          backgroundSize: `${bg.zoom * 100}%`,
+          backgroundPosition: `${bg.posX}% ${bg.posY}%`,
+          backgroundRepeat: "no-repeat",
+        }),
       }}
     >
       <Stack align="stretch" gap="lg" style={{ maxWidth: 320, width: "100%" }}>

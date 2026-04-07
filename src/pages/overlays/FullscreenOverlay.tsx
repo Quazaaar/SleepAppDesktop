@@ -3,6 +3,7 @@ import { Card, Stack, Title, Text, Textarea, Button } from "@mantine/core";
 import { motion } from "framer-motion";
 import { useEscalationState } from "../../hooks/useEscalationState";
 import { dismissEscalation, saveWrapUpNote, getLatestWrapUpNote, getCurrentSessionKey } from "../../lib/commands";
+import { useAppTheme } from "../../context/ThemeContext";
 
 /**
  * Level 4 fullscreen overlay — rendered in the maximized transparent
@@ -18,6 +19,8 @@ import { dismissEscalation, saveWrapUpNote, getLatestWrapUpNote, getCurrentSessi
  */
 export default function FullscreenOverlay() {
   const { message } = useEscalationState();
+  const { escalationBgs } = useAppTheme();
+  const bg = escalationBgs["Level4"];
   const [workingOn, setWorkingOn] = useState("");
   const [nextSteps, setNextSteps] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -65,6 +68,12 @@ export default function FullscreenOverlay() {
         justifyContent: "center",
         background: "rgba(0, 0, 0, 0.88)",
         padding: "2rem",
+        ...(bg && {
+          backgroundImage: `url(${bg.image})`,
+          backgroundSize: `${bg.zoom * 100}%`,
+          backgroundPosition: `${bg.posX}% ${bg.posY}%`,
+          backgroundRepeat: "no-repeat",
+        }),
       }}
     >
       <Card

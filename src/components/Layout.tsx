@@ -17,6 +17,7 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
   IconCategory,
+  IconPalette,
 } from "@tabler/icons-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import TitleBar from "./TitleBar";
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { label: "Dashboard", icon: IconDashboard, path: "/" },
   { label: "Timeline", icon: IconTimeline, path: "/timeline" },
   { label: "Apps", icon: IconCategory, path: "/apps" },
+  { label: "Theme", icon: IconPalette, path: "/theme" },
   { label: "Settings", icon: IconSettings, path: "/settings" },
 ];
 

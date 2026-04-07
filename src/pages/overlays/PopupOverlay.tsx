@@ -1,6 +1,7 @@
 import { Card, Text, Stack, Group, Button } from "@mantine/core";
 import { useEscalationState } from "../../hooks/useEscalationState";
 import { acknowledgePopup } from "../../lib/commands";
+import { useAppTheme } from "../../context/ThemeContext";
 
 /**
  * Level 2 popup overlay — rendered in the small floating "escalation-popup"
@@ -11,6 +12,8 @@ import { acknowledgePopup } from "../../lib/commands";
  */
 export default function PopupOverlay() {
   const { message } = useEscalationState();
+  const { escalationBgs } = useAppTheme();
+  const bg = escalationBgs["Level2"];
 
   return (
     <Card
@@ -24,6 +27,12 @@ export default function PopupOverlay() {
         display: "flex",
         alignItems: "center",
         cursor: "grab",
+        ...(bg && {
+          backgroundImage: `url(${bg.image})`,
+          backgroundSize: `${bg.zoom * 100}%`,
+          backgroundPosition: `${bg.posX}% ${bg.posY}%`,
+          backgroundRepeat: "no-repeat",
+        }),
       }}
     >
       <Group justify="space-between" align="center" wrap="nowrap" w="100%">

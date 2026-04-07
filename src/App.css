@@ -53,6 +53,10 @@ body {
 
 .mantine-AppShell-root {
   background: var(--bg-gradient);
+  background-image: var(--bg-custom-url);
+  background-size: var(--bg-custom-size, cover);
+  background-position: var(--bg-custom-pos, center);
+  background-repeat: no-repeat;
   min-height: 100vh;
 }
 
