@@ -270,6 +270,30 @@ pub fn get_sync_status(state: State<SharedTrackerState>) -> Result<SyncStatus, S
     })
 }
 
+/// Returns the primary monitor's size in **logical pixels**, normalizing for the
+/// monitor's scale factor.
+///
+/// `Monitor::size()` returns physical pixels (e.g. 1920x1080 on a 1.0-scale display,
+/// or 2400x1350 reported as 1920x1080 physical on a 125%-scaled 1080p panel — varies
+/// per device). `WebviewWindowBuilder::inner_size` and `position` consume *logical*
+/// pixels. Mixing the two on fractional-DPI displays yields windows that are
+/// `scale_factor` times too large and positioned off-screen.
+///
+/// Falls back to (1920.0, 1080.0) if the primary monitor cannot be queried.
+fn primary_monitor_logical_size(app: &tauri::AppHandle) -> (f64, f64) {
+    app.primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| {
+            let size = m.size();
+            let scale = m.scale_factor();
+            // Guard against a zero scale factor (shouldn't happen, but avoid div-by-zero).
+            let scale = if scale > 0.0 { scale } else { 1.0 };
+            (size.width as f64 / scale, size.height as f64 / scale)
+        })
+        .unwrap_or((1920.0, 1080.0))
+}
+
 #[tauri::command]
 pub async fn show_escalation_window(
     app: tauri::AppHandle,
@@ -345,15 +369,11 @@ pub async fn show_escalation_window(
                 }
             }
 
-            let (width, height) = app
-                .primary_monitor()
-                .ok()
-                .flatten()
-                .map(|m| {
-                    let size = m.size();
-                    (size.width as f64, size.height as f64)
-                })
-                .unwrap_or((1920.0, 1080.0));
+            // inner_size + position consume logical pixels — see helper docs above.
+            // Previously this used `monitor.size()` (physical) directly, which produced
+            // a panel `scale_factor` times too wide and positioned off-screen on
+            // 125%/150%-scaled Windows displays.
+            let (logical_width, logical_height) = primary_monitor_logical_size(&app);
 
             WebviewWindowBuilder::new(
                 &app,
@@ -364,23 +384,35 @@ pub async fn show_escalation_window(
             .always_on_top(true)
             .skip_taskbar(true)
             .resizable(false)
-            .inner_size(width * 0.3, height)
-            .position(width * 0.7, 0.0)
+            .inner_size(logical_width * 0.3, logical_height)
+            .position(logical_width * 0.7, 0.0)
             .build()
             .map_err(|e| e.to_string())?;
         }
         "Level4" => {
+            // Cover the full primary monitor with explicit logical-pixel geometry.
+            //
+            // We previously used `.maximized(true) + .transparent(true) + .decorations(false)`,
+            // which on Windows + fractional DPI is unreliable: the OS maximizes to the
+            // unscaled work area while WebView2 receives a logical-pixel client size,
+            // leaving the overlay clipped on the bottom and/or right.
+            //
+            // The overlay markup itself paints rgba(0,0,0,0.88) so `transparent(true)`
+            // is unnecessary — drop it to avoid the maximized-transparent quirk.
+            // We deliberately do NOT use `fullscreen(true)` (Tauri bug #7328 on Windows).
+            let (logical_width, logical_height) = primary_monitor_logical_size(&app);
+
             WebviewWindowBuilder::new(
                 &app,
                 "escalation-fullscreen",
                 WebviewUrl::App("/#/overlay/fullscreen".into()),
             )
             .decorations(false)
-            .transparent(true)
-            .maximized(true) // NOT fullscreen(true) — Tauri bug #7328 on Windows
             .always_on_top(true)
             .skip_taskbar(true)
             .resizable(false)
+            .position(0.0, 0.0)
+            .inner_size(logical_width, logical_height)
             .build()
             .map_err(|e| e.to_string())?;
         }
