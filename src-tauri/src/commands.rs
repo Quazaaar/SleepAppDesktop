@@ -107,18 +107,21 @@ struct LoginResponse {
     refresh_token: String,
 }
 
-#[tauri::command]
-pub async fn login(
-    state: State<'_, SharedTrackerState>,
-    app: tauri::AppHandle,
-    sync_url: String,
-    email: String,
-    password: String,
-) -> Result<(), String> {
+async fn auth_request(
+    path: &str,
+    email: &str,
+    password: &str,
+    device_name: &str,
+) -> Result<LoginResponse, String> {
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("{}/api/auth/login", sync_url))
-        .json(&serde_json::json!({ "email": email, "password": password }))
+        .post(format!("{}{}", sync::api_base_url(), path))
+        .header("User-Agent", sync::client_user_agent())
+        .json(&serde_json::json!({
+            "email": email,
+            "password": password,
+            "device_name": device_name,
+        }))
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -126,69 +129,56 @@ pub async fn login(
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Login failed ({}): {}", status, body));
+        return Err(format!("Auth request failed ({}): {}", status, body));
     }
 
-    let body: LoginResponse = resp.json().await.map_err(|e| e.to_string())?;
+    resp.json::<LoginResponse>().await.map_err(|e| e.to_string())
+}
 
-    // Persist to TrackerState
+fn persist_auth(
+    state: &State<'_, SharedTrackerState>,
+    app: &tauri::AppHandle,
+    body: &LoginResponse,
+) -> Result<(), String> {
     {
         let mut tracker = state.lock().map_err(|e| e.to_string())?;
-        tracker.sync_url = sync_url.clone();
         tracker.access_token = body.access_token.clone();
         tracker.refresh_token = body.refresh_token.clone();
     }
 
-    // Persist to Tauri Store
     let store = app.store("settings.json").map_err(|e| e.to_string())?;
-    store.set("sync_url", serde_json::json!(sync_url));
     store.set("access_token", serde_json::json!(body.access_token));
     store.set("refresh_token", serde_json::json!(body.refresh_token));
+    // Old key — purge so nothing in settings.json reveals the API URL.
+    let _ = store.delete("sync_url");
     store.save().map_err(|e| e.to_string())?;
-
     Ok(())
+}
+
+#[tauri::command]
+pub async fn login(
+    state: State<'_, SharedTrackerState>,
+    app: tauri::AppHandle,
+    email: String,
+    password: String,
+) -> Result<(), String> {
+    let device_name = sync::current_device_name();
+    let body = auth_request("/api/auth/login", &email, &password, &device_name).await
+        .map_err(|e| e.replace("Auth request failed", "Login failed"))?;
+    persist_auth(&state, &app, &body)
 }
 
 #[tauri::command]
 pub async fn register(
     state: State<'_, SharedTrackerState>,
     app: tauri::AppHandle,
-    sync_url: String,
     email: String,
     password: String,
 ) -> Result<(), String> {
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("{}/api/auth/register", sync_url))
-        .json(&serde_json::json!({ "email": email, "password": password }))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Registration failed ({}): {}", status, body));
-    }
-
-    let body: LoginResponse = resp.json().await.map_err(|e| e.to_string())?;
-
-    // Persist to TrackerState
-    {
-        let mut tracker = state.lock().map_err(|e| e.to_string())?;
-        tracker.sync_url = sync_url.clone();
-        tracker.access_token = body.access_token.clone();
-        tracker.refresh_token = body.refresh_token.clone();
-    }
-
-    // Persist to Tauri Store
-    let store = app.store("settings.json").map_err(|e| e.to_string())?;
-    store.set("sync_url", serde_json::json!(sync_url));
-    store.set("access_token", serde_json::json!(body.access_token));
-    store.set("refresh_token", serde_json::json!(body.refresh_token));
-    store.save().map_err(|e| e.to_string())?;
-
-    Ok(())
+    let device_name = sync::current_device_name();
+    let body = auth_request("/api/auth/register", &email, &password, &device_name).await
+        .map_err(|e| e.replace("Auth request failed", "Registration failed"))?;
+    persist_auth(&state, &app, &body)
 }
 
 #[tauri::command]
@@ -221,19 +211,18 @@ pub async fn sync_now(
     state: State<'_, SharedTrackerState>,
     app: tauri::AppHandle,
 ) -> Result<usize, String> {
-    let (db_path, sync_url, access_token, refresh_token) = {
+    let (db_path, access_token, refresh_token) = {
         let tracker = state.lock().map_err(|e| e.to_string())?;
         (
             tracker.db_path.clone(),
-            tracker.sync_url.clone(),
             tracker.access_token.clone(),
             tracker.refresh_token.clone(),
         )
     };
-    if sync_url.is_empty() || access_token.is_empty() {
+    if access_token.is_empty() {
         return Err("Not logged in".into());
     }
-    let mut client = sync::SyncClient::new(sync_url, access_token, refresh_token);
+    let mut client = sync::SyncClient::new(sync::api_base_url(), access_token, refresh_token);
     let result = client.sync_daily_data(&db_path).await?;
 
     // Persist refreshed tokens if they were rotated
@@ -265,7 +254,7 @@ pub fn get_sync_status(state: State<SharedTrackerState>) -> Result<SyncStatus, S
     let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
     let last_sync = db::get_last_sync_time(&conn).map_err(|e| e.to_string())?;
     Ok(SyncStatus {
-        configured: !tracker.sync_url.is_empty() && !tracker.access_token.is_empty(),
+        configured: !tracker.access_token.is_empty(),
         last_sync_time: last_sync,
     })
 }
@@ -626,4 +615,122 @@ pub fn pause_escalation(
         crate::update_tray_pause_items(&tray_items, is_paused);
     }
     Ok(())
+}
+
+// --- Settings + devices cloud sync (calls into lucidshift-api) -----------------
+
+fn read_auth(
+    state: &State<'_, SharedTrackerState>,
+) -> Result<(String, String), String> {
+    let tracker = state.lock().map_err(|e| e.to_string())?;
+    if tracker.access_token.is_empty() {
+        return Err("Not logged in".into());
+    }
+    Ok((
+        tracker.access_token.clone(),
+        tracker.refresh_token.clone(),
+    ))
+}
+
+fn store_rotated(
+    state: &State<'_, SharedTrackerState>,
+    app: &tauri::AppHandle,
+    rotated: Option<(String, String)>,
+) -> Result<(), String> {
+    let Some((access, refresh)) = rotated else { return Ok(()); };
+    {
+        let mut tracker = state.lock().map_err(|e| e.to_string())?;
+        tracker.access_token = access.clone();
+        tracker.refresh_token = refresh.clone();
+    }
+    let store = app.store("settings.json").map_err(|e| e.to_string())?;
+    store.set("access_token", serde_json::json!(access));
+    store.set("refresh_token", serde_json::json!(refresh));
+    store.save().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn pull_settings(
+    state: State<'_, SharedTrackerState>,
+    app: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    let (access, refresh) = read_auth(&state)?;
+    let sync_url = sync::api_base_url();
+    let result = sync::authed_json::<serde_json::Value>(
+        &sync_url,
+        reqwest::Method::GET,
+        "/api/settings",
+        &access,
+        &refresh,
+        None,
+    )
+    .await?;
+    store_rotated(&state, &app, result.rotated_tokens)?;
+    Ok(result.body)
+}
+
+#[tauri::command]
+pub async fn push_settings(
+    state: State<'_, SharedTrackerState>,
+    app: tauri::AppHandle,
+    theme: String,
+    settings: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let (access, refresh) = read_auth(&state)?;
+    let sync_url = sync::api_base_url();
+    let body = serde_json::json!({ "theme": theme, "settings": settings });
+    let result = sync::authed_json::<serde_json::Value>(
+        &sync_url,
+        reqwest::Method::PUT,
+        "/api/settings",
+        &access,
+        &refresh,
+        Some(&body),
+    )
+    .await?;
+    store_rotated(&state, &app, result.rotated_tokens)?;
+    Ok(result.body)
+}
+
+#[tauri::command]
+pub async fn list_devices(
+    state: State<'_, SharedTrackerState>,
+    app: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    let (access, refresh) = read_auth(&state)?;
+    let sync_url = sync::api_base_url();
+    let result = sync::authed_json::<serde_json::Value>(
+        &sync_url,
+        reqwest::Method::GET,
+        "/api/devices",
+        &access,
+        &refresh,
+        None,
+    )
+    .await?;
+    store_rotated(&state, &app, result.rotated_tokens)?;
+    Ok(result.body)
+}
+
+#[tauri::command]
+pub async fn revoke_device(
+    state: State<'_, SharedTrackerState>,
+    app: tauri::AppHandle,
+    device_id: i64,
+) -> Result<serde_json::Value, String> {
+    let (access, refresh) = read_auth(&state)?;
+    let sync_url = sync::api_base_url();
+    let path = format!("/api/devices/{device_id}");
+    let result = sync::authed_json::<serde_json::Value>(
+        &sync_url,
+        reqwest::Method::DELETE,
+        &path,
+        &access,
+        &refresh,
+        None,
+    )
+    .await?;
+    store_rotated(&state, &app, result.rotated_tokens)?;
+    Ok(result.body)
 }

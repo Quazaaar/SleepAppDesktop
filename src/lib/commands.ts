@@ -9,6 +9,8 @@ import type {
   AppCategoryEntry,
   TitleKeywordRule,
   WrapUpNote,
+  CloudSettings,
+  DeviceListEntry,
 } from "./types";
 
 export async function getCurrentApp(): Promise<CurrentAppInfo> {
@@ -69,19 +71,17 @@ export async function getSyncStatus(): Promise<SyncStatus> {
 }
 
 export async function login(
-  syncUrl: string,
   email: string,
   password: string
 ): Promise<void> {
-  return invoke("login", { syncUrl, email, password });
+  return invoke("login", { email, password });
 }
 
 export async function register(
-  syncUrl: string,
   email: string,
   password: string
 ): Promise<void> {
-  return invoke("register", { syncUrl, email, password });
+  return invoke("register", { email, password });
 }
 
 export async function logout(): Promise<void> {
@@ -158,4 +158,23 @@ export async function getLatestWrapUpNote(): Promise<WrapUpNote | null> {
 
 export async function getCurrentSessionKey(): Promise<string | null> {
   return invoke("get_current_session_key");
+}
+
+export async function pullSettings(): Promise<CloudSettings> {
+  return invoke("pull_settings");
+}
+
+export async function pushSettings(
+  theme: string,
+  settings: Record<string, unknown>
+): Promise<CloudSettings> {
+  return invoke("push_settings", { theme, settings });
+}
+
+export async function listDevices(): Promise<DeviceListEntry[]> {
+  return invoke("list_devices");
+}
+
+export async function revokeDevice(deviceId: number): Promise<{ revoked: number }> {
+  return invoke("revoke_device", { deviceId });
 }

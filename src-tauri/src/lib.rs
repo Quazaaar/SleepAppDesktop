@@ -61,11 +61,9 @@ pub fn run() {
                 state.db_path = db_path.to_string_lossy().to_string();
                 state.is_tracking = true;
 
-                // Load sync config from store
+                // Load auth tokens from store. The API URL is baked into the binary
+                // (see `sync::api_base_url`) and is never read from disk.
                 if let Ok(store) = app.store("settings.json") {
-                    if let Some(url) = store.get("sync_url").and_then(|v| v.as_str().map(String::from)) {
-                        state.sync_url = url;
-                    }
                     if let Some(token) = store.get("access_token").and_then(|v| v.as_str().map(String::from)) {
                         state.access_token = token;
                     }
@@ -311,6 +309,10 @@ pub fn run() {
             commands::save_wrap_up_note,
             commands::get_latest_wrap_up_note,
             commands::get_current_session_key,
+            commands::pull_settings,
+            commands::push_settings,
+            commands::list_devices,
+            commands::revoke_device,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

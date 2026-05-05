@@ -30,10 +30,11 @@ import {
   register,
   logout,
   getAuthStatus,
+  listDevices,
+  revokeDevice,
 } from "../lib/commands";
-import type { ReminderRule, SyncStatus } from "../lib/types";
+import type { ReminderRule, SyncStatus, DeviceListEntry } from "../lib/types";
 import { notifications } from "@mantine/notifications";
-import { load } from "@tauri-apps/plugin-store";
 import { useNavigate } from "react-router-dom";
 import { EscalationSettingsCard } from "../components/EscalationSettingsCard";
 
@@ -45,13 +46,14 @@ export default function Settings() {
   const [opened, { open, close }] = useDisclosure(false);
 
   // Auth / sync state
-  const [syncUrl, setSyncUrl] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  const [devices, setDevices] = useState<DeviceListEntry[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
 
   // New rule form state
   const [ruleType, setRuleType] = useState<string>("break_reminder");
@@ -84,16 +86,6 @@ export default function Settings() {
 
   useEffect(() => {
     loadData();
-    // Load sync URL from store
-    (async () => {
-      try {
-        const store = await load("settings.json");
-        const url = await store.get<string>("sync_url");
-        if (url) setSyncUrl(url);
-      } catch {
-        // store not available yet
-      }
-    })();
   }, []);
 
   const handleToggleRule = async (ruleId: number, enabled: boolean) => {
@@ -126,7 +118,7 @@ export default function Settings() {
   const handleLogin = async () => {
     setAuthLoading(true);
     try {
-      await login(syncUrl, email, password);
+      await login(email, password);
       setIsLoggedIn(true);
       setPassword("");
       setSyncStatus(await getSyncStatus());
@@ -141,7 +133,7 @@ export default function Settings() {
   const handleRegister = async () => {
     setAuthLoading(true);
     try {
-      await register(syncUrl, email, password);
+      await register(email, password);
       setIsLoggedIn(true);
       setPassword("");
       setSyncStatus(await getSyncStatus());
@@ -163,6 +155,35 @@ export default function Settings() {
       notifications.show({ title: "Error", message: String(e), color: "red" });
     }
   };
+
+  const refreshDevices = async () => {
+    setDevicesLoading(true);
+    try {
+      setDevices(await listDevices());
+    } catch (e) {
+      notifications.show({ title: "Couldn't load devices", message: String(e), color: "red" });
+    } finally {
+      setDevicesLoading(false);
+    }
+  };
+
+  const handleRevokeDevice = async (id: number, name: string) => {
+    try {
+      await revokeDevice(id);
+      notifications.show({ title: "Device signed out", message: name, color: "blue" });
+      await refreshDevices();
+    } catch (e) {
+      notifications.show({ title: "Revoke failed", message: String(e), color: "red" });
+    }
+  };
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      refreshDevices();
+    } else {
+      setDevices([]);
+    }
+  }, [isLoggedIn]);
 
   const handleSyncNow = async () => {
     setSyncing(true);
@@ -339,7 +360,7 @@ export default function Settings() {
         {isLoggedIn ? (
           <>
             <Text size="sm" c="dimmed" mb="sm">
-              Connected to {syncUrl || "cloud sync"}
+              Connected to cloud sync
             </Text>
             <Group>
               <Button
@@ -363,13 +384,6 @@ export default function Settings() {
             <Text size="sm" c="dimmed" mb="sm">
               Sign in or create an account to sync your data
             </Text>
-            <TextInput
-              label="API URL"
-              placeholder="http://localhost:3000"
-              value={syncUrl}
-              onChange={(e) => setSyncUrl(e.currentTarget.value)}
-              mb="sm"
-            />
             <TextInput
               label="Email"
               placeholder="you@example.com"
@@ -396,6 +410,70 @@ export default function Settings() {
           </>
         )}
       </Card>
+
+      {/* Signed-in devices */}
+      {isLoggedIn && (
+        <Card shadow="sm" padding="lg" radius="md" withBorder>
+          <Group justify="space-between" mb="md">
+            <Title order={4}>Signed-in devices</Title>
+            <Button size="xs" variant="light" onClick={refreshDevices} loading={devicesLoading}>
+              Refresh
+            </Button>
+          </Group>
+          {devices.length > 0 ? (
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Device</Table.Th>
+                  <Table.Th>Last seen</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {devices.map((d) => (
+                  <Table.Tr key={d.id}>
+                    <Table.Td>
+                      <Text size="sm">
+                        {d.device_name}
+                        {d.current && (
+                          <Text component="span" size="xs" c="green" ml="xs">
+                            (this device)
+                          </Text>
+                        )}
+                      </Text>
+                      {d.user_agent && (
+                        <Text size="xs" c="dimmed">
+                          {d.user_agent}
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs" c="dimmed">
+                        {new Date(d.last_seen_at).toLocaleString()}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color="red"
+                        disabled={d.current}
+                        onClick={() => handleRevokeDevice(d.id, d.device_name)}
+                      >
+                        Sign out
+                      </Button>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          ) : (
+            <Text size="sm" c="dimmed">
+              {devicesLoading ? "Loading…" : "No devices found"}
+            </Text>
+          )}
+        </Card>
+      )}
 
       {/* Add Rule Modal */}
       <Modal opened={opened} onClose={close} title="Add Reminder Rule">

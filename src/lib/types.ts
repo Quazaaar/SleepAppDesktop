@@ -80,3 +80,18 @@ export interface WrapUpNote {
   next_steps: string;
   created_at: string;
 }
+
+export interface CloudSettings {
+  theme: string;
+  settings: Record<string, unknown>;
+  updated_at: string | null;
+}
+
+export interface DeviceListEntry {
+  id: number;
+  device_name: string;
+  user_agent: string | null;
+  created_at: string;
+  last_seen_at: string;
+  current: boolean;
+}
