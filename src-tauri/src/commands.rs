@@ -293,12 +293,20 @@ pub async fn show_escalation_window(
     // This prevents window accumulation when the level advances (Pitfall 4).
     // For the popup, persist its position/size before closing so we can restore it.
     if let Some(w) = app.get_webview_window("escalation-popup") {
-        if let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) {
+        // outer_position/inner_size return PHYSICAL pixels; the builder consumes
+        // LOGICAL pixels. Convert before persisting so save→restore is unit-stable
+        // on fractional-DPI displays (otherwise the popup grows by scale_factor
+        // on every open).
+        if let (Ok(pos), Ok(size), Ok(scale)) =
+            (w.outer_position(), w.inner_size(), w.scale_factor())
+        {
+            let pos_l = pos.to_logical::<f64>(scale);
+            let size_l = size.to_logical::<f64>(scale);
             if let Ok(store) = app.store("settings.json") {
-                let _ = store.set("popup_x", serde_json::json!(pos.x));
-                let _ = store.set("popup_y", serde_json::json!(pos.y));
-                let _ = store.set("popup_w", serde_json::json!(size.width));
-                let _ = store.set("popup_h", serde_json::json!(size.height));
+                let _ = store.set("popup_x", serde_json::json!(pos_l.x));
+                let _ = store.set("popup_y", serde_json::json!(pos_l.y));
+                let _ = store.set("popup_w", serde_json::json!(size_l.width));
+                let _ = store.set("popup_h", serde_json::json!(size_l.height));
                 let _ = store.save();
             }
         }
@@ -312,42 +320,60 @@ pub async fn show_escalation_window(
 
     match level.as_str() {
         "Level2" => {
-            // Restore saved geometry or use defaults.
-            let (mut x, mut y, mut w, mut h) = (None, None, 320.0_f64, 140.0_f64);
+            // All geometry below is in LOGICAL pixels (what the builder expects).
+            // The save path normalizes via to_logical(); the upper clamp also
+            // recovers any pre-fix users whose stored values are still physical.
+            let (mon_w, mon_h) = primary_monitor_logical_size(&app);
+            let default_w = 320.0_f64;
+            let default_h = 140.0_f64;
+            let margin = 24.0_f64;
+
+            let (mut saved_x, mut saved_y, mut w, mut h) =
+                (None, None, default_w, default_h);
             if let Ok(store) = app.store("settings.json") {
                 if let (Some(sx), Some(sy)) = (
                     store.get("popup_x").and_then(|v| v.as_f64()),
                     store.get("popup_y").and_then(|v| v.as_f64()),
                 ) {
-                    x = Some(sx);
-                    y = Some(sy);
+                    saved_x = Some(sx);
+                    saved_y = Some(sy);
                 }
                 if let (Some(sw), Some(sh)) = (
                     store.get("popup_w").and_then(|v| v.as_f64()),
                     store.get("popup_h").and_then(|v| v.as_f64()),
                 ) {
-                    w = sw.max(200.0);
-                    h = sh.max(80.0);
+                    w = sw.clamp(200.0, mon_w * 0.5);
+                    h = sh.clamp(80.0, mon_h * 0.5);
                 }
             }
 
-            let mut builder = WebviewWindowBuilder::new(
+            // Default to bottom-right; clamp restored position so the window
+            // stays on-screen even if the user changed monitors since last save.
+            let (px, py) = match (saved_x, saved_y) {
+                (Some(sx), Some(sy)) => (
+                    sx.clamp(0.0, (mon_w - w).max(0.0)),
+                    sy.clamp(0.0, (mon_h - h).max(0.0)),
+                ),
+                _ => (
+                    (mon_w - w - margin).max(0.0),
+                    (mon_h - h - margin).max(0.0),
+                ),
+            };
+
+            WebviewWindowBuilder::new(
                 &app,
                 "escalation-popup",
                 WebviewUrl::App("/#/overlay/popup".into()),
             )
             .title("LucidShift")
             .inner_size(w, h)
+            .position(px, py)
             .decorations(false)
             .always_on_top(true)
             .skip_taskbar(true)
-            .resizable(true);
-
-            if let (Some(px), Some(py)) = (x, y) {
-                builder = builder.position(px, py);
-            }
-
-            builder.build().map_err(|e| e.to_string())?;
+            .resizable(true)
+            .build()
+            .map_err(|e| e.to_string())?;
         }
         "Level3" => {
             // Generate session key on first L3 appearance for this escalation cycle
