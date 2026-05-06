@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import { type AppThemeId, DEFAULT_THEME_ID, themePresets } from "../lib/theme";
-import { getAuthStatus, pullSettings, pushSettings } from "../lib/commands";
 
 export interface EscalationBgConfig {
   image: string;
@@ -54,29 +53,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         // Tauri not available (web-only dev) or store error — use default
       }
 
-      // If signed in, prefer the cloud copy (last-writer-wins by updated_at).
-      // Background pull is best-effort; failures fall back to local.
-      try {
-        const authed = await getAuthStatus();
-        if (authed) {
-          const remote = await pullSettings();
-          if (remote.theme && remote.theme in themePresets && remote.updated_at) {
-            initialTheme = remote.theme as AppThemeId;
-            try {
-              const store = await load("settings.json", { autoSave: true, defaults: {} });
-              await store.set("app_theme", initialTheme);
-            } catch {
-              // ignore
-            }
-          } else if (!remote.updated_at) {
-            // Fresh account on the server — push local theme up so other devices pick it up.
-            pushSettings(initialTheme, {}).catch(() => {});
-          }
-        }
-      } catch {
-        // not authed, offline, or API down — silent fallback
-      }
-
       setThemeId(initialTheme);
       setStoreReady(true);
     })();
@@ -111,15 +87,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     try {
       const store = await load("settings.json", { autoSave: true, defaults: {} });
       await store.set("app_theme", id);
-    } catch {
-      // ignore
-    }
-    // Best-effort push to cloud; ignore errors so theme changes don't depend on network.
-    try {
-      const authed = await getAuthStatus();
-      if (authed) {
-        await pushSettings(id, {});
-      }
     } catch {
       // ignore
     }

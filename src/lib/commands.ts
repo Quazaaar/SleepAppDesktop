@@ -166,10 +166,9 @@ export async function pullSettings(): Promise<CloudSettings> {
 }
 
 export async function pushSettings(
-  theme: string,
   settings: Record<string, unknown>
 ): Promise<CloudSettings> {
-  return invoke("push_settings", { theme, settings });
+  return invoke("push_settings", { settings });
 }
 
 export async function listDevices(): Promise<DeviceListEntry[]> {

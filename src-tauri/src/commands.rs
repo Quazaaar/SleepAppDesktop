@@ -976,14 +976,7 @@ async fn put_profiles_to_cloud(
         serde_json::to_value(&final_payload).map_err(|e| e.to_string())?,
     );
 
-    let theme = pulled
-        .body
-        .get("theme")
-        .and_then(|value| value.as_str())
-        .unwrap_or("glass-dark")
-        .to_string();
     let body = serde_json::json!({
-        "theme": theme,
         "settings": serde_json::Value::Object(next_settings),
     });
 
@@ -1262,14 +1255,17 @@ pub async fn pull_settings(
     )
     .await?;
     store_rotated(&state, &app, result.rotated_tokens)?;
-    Ok(result.body)
+    let mut body = result.body;
+    if let Some(object) = body.as_object_mut() {
+        object.remove("theme");
+    }
+    Ok(body)
 }
 
 #[tauri::command]
 pub async fn push_settings(
     state: State<'_, SharedTrackerState>,
     app: tauri::AppHandle,
-    theme: String,
     settings: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let (access, refresh) = read_auth(&state)?;
@@ -1315,7 +1311,6 @@ pub async fn push_settings(
     }
 
     let body = serde_json::json!({
-        "theme": theme,
         "settings": serde_json::Value::Object(next_settings),
     });
     let (access, refresh) = read_auth(&state)?;

@@ -82,7 +82,7 @@ export interface WrapUpNote {
 }
 
 export interface CloudSettings {
-  theme: string;
+  theme?: string | null;
   settings: Record<string, unknown>;
   updated_at: string | null;
 }
