@@ -95,3 +95,28 @@ export interface DeviceListEntry {
   last_seen_at: string;
   current: boolean;
 }
+
+export interface ProfileAppCategory {
+  app_name: string;
+  category: string;
+}
+
+export interface DeviceProfileSettings {
+  escalation: EscalationSettings;
+  ignored_apps: string[];
+  reminder_rules: ReminderRule[];
+  app_categories: ProfileAppCategory[];
+  title_keyword_rules: TitleKeywordRule[];
+}
+
+export interface DeviceProfile {
+  id: string;
+  name: string;
+  settings: DeviceProfileSettings;
+  updated_at: string;
+}
+
+export interface DeviceProfilesState {
+  profiles: DeviceProfile[];
+  active_profile_id: string | null;
+}

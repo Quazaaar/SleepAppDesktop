@@ -11,6 +11,7 @@ import type {
   WrapUpNote,
   CloudSettings,
   DeviceListEntry,
+  DeviceProfilesState,
 } from "./types";
 
 export async function getCurrentApp(): Promise<CurrentAppInfo> {
@@ -177,4 +178,35 @@ export async function listDevices(): Promise<DeviceListEntry[]> {
 
 export async function revokeDevice(deviceId: number): Promise<{ revoked: number }> {
   return invoke("revoke_device", { deviceId });
+}
+
+export async function listDeviceProfiles(): Promise<DeviceProfilesState> {
+  return invoke("list_device_profiles");
+}
+
+export async function createDeviceProfile(name: string): Promise<DeviceProfilesState> {
+  return invoke("create_device_profile", { name });
+}
+
+export async function renameDeviceProfile(
+  profileId: string,
+  name: string
+): Promise<DeviceProfilesState> {
+  return invoke("rename_device_profile", { profileId, name });
+}
+
+export async function deleteDeviceProfile(profileId: string): Promise<DeviceProfilesState> {
+  return invoke("delete_device_profile", { profileId });
+}
+
+export async function selectDeviceProfile(profileId: string): Promise<DeviceProfilesState> {
+  return invoke("select_device_profile", { profileId });
+}
+
+export async function saveActiveDeviceProfile(): Promise<DeviceProfilesState> {
+  return invoke("save_active_device_profile");
+}
+
+export async function syncDeviceProfiles(): Promise<DeviceProfilesState> {
+  return invoke("sync_device_profiles");
 }

@@ -1,4 +1,5 @@
 use chrono::Local;
+use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 use tauri::WebviewUrl;
 use tauri::webview::WebviewWindowBuilder;
@@ -58,10 +59,15 @@ pub fn get_ignored_apps(state: State<SharedTrackerState>) -> Result<Vec<String>,
 }
 
 #[tauri::command]
-pub fn set_ignored_apps(state: State<SharedTrackerState>, apps: Vec<String>) -> Result<(), String> {
+pub fn set_ignored_apps(
+    state: State<SharedTrackerState>,
+    app: tauri::AppHandle,
+    apps: Vec<String>,
+) -> Result<(), String> {
     let mut tracker = state.lock().map_err(|e| e.to_string())?;
     let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
     db::save_ignored_apps(&conn, &apps).map_err(|e| e.to_string())?;
+    autosave_active_profile_from_db(&app, &conn)?;
     tracker.ignored_apps = apps;
     Ok(())
 }
@@ -76,32 +82,41 @@ pub fn get_reminder_rules(state: State<SharedTrackerState>) -> Result<Vec<Remind
 #[tauri::command]
 pub fn save_reminder_rule(
     state: State<SharedTrackerState>,
+    app: tauri::AppHandle,
     rule: ReminderRule,
 ) -> Result<(), String> {
     let tracker = state.lock().map_err(|e| e.to_string())?;
     let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
-    db::save_reminder_rule(&conn, &rule).map_err(|e| e.to_string())
+    db::save_reminder_rule(&conn, &rule).map_err(|e| e.to_string())?;
+    autosave_active_profile_from_db(&app, &conn)
 }
 
 #[tauri::command]
-pub fn delete_reminder_rule(state: State<SharedTrackerState>, rule_id: i64) -> Result<(), String> {
+pub fn delete_reminder_rule(
+    state: State<SharedTrackerState>,
+    app: tauri::AppHandle,
+    rule_id: i64,
+) -> Result<(), String> {
     let tracker = state.lock().map_err(|e| e.to_string())?;
     let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
-    db::delete_reminder_rule(&conn, rule_id).map_err(|e| e.to_string())
+    db::delete_reminder_rule(&conn, rule_id).map_err(|e| e.to_string())?;
+    autosave_active_profile_from_db(&app, &conn)
 }
 
 #[tauri::command]
 pub fn toggle_reminder_rule(
     state: State<SharedTrackerState>,
+    app: tauri::AppHandle,
     rule_id: i64,
     enabled: bool,
 ) -> Result<(), String> {
     let tracker = state.lock().map_err(|e| e.to_string())?;
     let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
-    db::toggle_reminder_rule(&conn, rule_id, enabled).map_err(|e| e.to_string())
+    db::toggle_reminder_rule(&conn, rule_id, enabled).map_err(|e| e.to_string())?;
+    autosave_active_profile_from_db(&app, &conn)
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Deserialize)]
 struct LoginResponse {
     access_token: String,
     refresh_token: String,
@@ -244,6 +259,18 @@ pub async fn sync_now(
 
     // Sync wrap-up notes after session sync (tokens already fresh if refresh was needed)
     let notes_count = client.sync_notes(&db_path).await.unwrap_or(0);
+
+    // Profile snapshots are stored in the generic cloud settings document. Keep this
+    // best-effort so activity sync does not fail just because profile sync is offline.
+    if let Ok(payload) = read_local_profile_payload(&app) {
+        if !payload.profiles.is_empty() {
+            if let Ok(final_payload) =
+                put_profiles_to_cloud(&state, &app, &payload, true, None).await
+            {
+                let _ = write_local_profile_payload(&app, &final_payload);
+            }
+        }
+    }
 
     Ok(result.count + notes_count)
 }
@@ -500,11 +527,13 @@ pub fn get_escalation_settings(state: State<SharedTrackerState>) -> Result<Escal
 #[tauri::command]
 pub fn set_escalation_settings(
     state: State<SharedTrackerState>,
+    app: tauri::AppHandle,
     settings: EscalationSettings,
 ) -> Result<(), String> {
     let mut tracker = state.lock().map_err(|e| e.to_string())?;
     let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
     db::save_escalation_settings(&conn, &settings).map_err(|e| e.to_string())?;
+    autosave_active_profile_from_db(&app, &conn)?;
     tracker.escalation_engine.settings = settings;
     Ok(())
 }
@@ -519,12 +548,14 @@ pub fn get_app_categories(state: State<SharedTrackerState>) -> Result<Vec<AppCat
 #[tauri::command]
 pub fn set_app_category(
     state: State<SharedTrackerState>,
+    app: tauri::AppHandle,
     app_name: String,
     category: String,
 ) -> Result<(), String> {
     let mut tracker = state.lock().map_err(|e| e.to_string())?;
     let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
     db::set_app_category(&conn, &app_name, &category).map_err(|e| e.to_string())?;
+    autosave_active_profile_from_db(&app, &conn)?;
     tracker.app_categories.insert(app_name.to_lowercase(), category);
     Ok(())
 }
@@ -539,6 +570,7 @@ pub fn get_title_keyword_rules(state: State<SharedTrackerState>) -> Result<Vec<T
 #[tauri::command]
 pub fn add_title_keyword_rule(
     state: State<SharedTrackerState>,
+    app: tauri::AppHandle,
     app_name: String,
     keyword: String,
     category: String,
@@ -547,6 +579,7 @@ pub fn add_title_keyword_rule(
     let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
     let new_id = db::add_title_keyword_rule(&conn, &app_name, &keyword, &category)
         .map_err(|e| e.to_string())?;
+    autosave_active_profile_from_db(&app, &conn)?;
     // Reload title_keyword_rules cache from DB
     let rules = db::get_title_keyword_rules(&conn).map_err(|e| e.to_string())?;
     tracker.title_keyword_rules = rules
@@ -559,11 +592,13 @@ pub fn add_title_keyword_rule(
 #[tauri::command]
 pub fn delete_title_keyword_rule(
     state: State<SharedTrackerState>,
+    app: tauri::AppHandle,
     id: i64,
 ) -> Result<(), String> {
     let mut tracker = state.lock().map_err(|e| e.to_string())?;
     let conn = db::open_db(&tracker.db_path).map_err(|e| e.to_string())?;
     db::delete_title_keyword_rule(&conn, id).map_err(|e| e.to_string())?;
+    autosave_active_profile_from_db(&app, &conn)?;
     // Reload title_keyword_rules cache from DB
     let rules = db::get_title_keyword_rules(&conn).map_err(|e| e.to_string())?;
     tracker.title_keyword_rules = rules
@@ -643,7 +678,345 @@ pub fn pause_escalation(
     Ok(())
 }
 
-// --- Settings + devices cloud sync (calls into lucidshift-api) -----------------
+// --- Device profiles, settings + devices cloud sync ---------------------------
+
+const DEVICE_PROFILES_KEY: &str = "device_profiles";
+const ACTIVE_DEVICE_PROFILE_ID_KEY: &str = "active_device_profile_id";
+const DEVICE_PROFILES_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CloudDeviceProfilesPayload {
+    #[serde(default = "default_device_profiles_version")]
+    version: u32,
+    #[serde(default)]
+    profiles: Vec<DeviceProfile>,
+}
+
+fn default_device_profiles_version() -> u32 {
+    DEVICE_PROFILES_VERSION
+}
+
+impl Default for CloudDeviceProfilesPayload {
+    fn default() -> Self {
+        Self {
+            version: DEVICE_PROFILES_VERSION,
+            profiles: Vec::new(),
+        }
+    }
+}
+
+fn now_rfc3339() -> String {
+    chrono::Local::now().to_rfc3339()
+}
+
+fn new_profile_id() -> String {
+    format!("profile-{}", chrono::Utc::now().timestamp_millis())
+}
+
+fn cleaned_profile_name(name: &str) -> Result<String, String> {
+    let cleaned = name.trim();
+    if cleaned.is_empty() {
+        return Err("Profile name is required".into());
+    }
+    Ok(cleaned.chars().take(64).collect())
+}
+
+fn read_local_profile_payload(
+    app: &tauri::AppHandle,
+) -> Result<CloudDeviceProfilesPayload, String> {
+    let store = app.store("settings.json").map_err(|e| e.to_string())?;
+    let payload = store
+        .get(DEVICE_PROFILES_KEY)
+        .and_then(|v| serde_json::from_value::<CloudDeviceProfilesPayload>(v).ok())
+        .unwrap_or_default();
+    Ok(CloudDeviceProfilesPayload {
+        version: DEVICE_PROFILES_VERSION,
+        profiles: payload.profiles,
+    })
+}
+
+fn write_local_profile_payload(
+    app: &tauri::AppHandle,
+    payload: &CloudDeviceProfilesPayload,
+) -> Result<(), String> {
+    let store = app.store("settings.json").map_err(|e| e.to_string())?;
+    store.set(
+        DEVICE_PROFILES_KEY,
+        serde_json::to_value(payload).map_err(|e| e.to_string())?,
+    );
+    store.save().map_err(|e| e.to_string())
+}
+
+fn read_active_profile_id(app: &tauri::AppHandle) -> Result<Option<String>, String> {
+    let store = app.store("settings.json").map_err(|e| e.to_string())?;
+    Ok(store
+        .get(ACTIVE_DEVICE_PROFILE_ID_KEY)
+        .and_then(|v| v.as_str().map(String::from))
+        .filter(|s| !s.trim().is_empty()))
+}
+
+fn write_active_profile_id(
+    app: &tauri::AppHandle,
+    profile_id: Option<&str>,
+) -> Result<(), String> {
+    let store = app.store("settings.json").map_err(|e| e.to_string())?;
+    if let Some(id) = profile_id {
+        store.set(ACTIVE_DEVICE_PROFILE_ID_KEY, serde_json::json!(id));
+    } else {
+        let _ = store.delete(ACTIVE_DEVICE_PROFILE_ID_KEY);
+    }
+    store.save().map_err(|e| e.to_string())
+}
+
+fn device_profiles_state(app: &tauri::AppHandle) -> Result<DeviceProfilesState, String> {
+    let payload = read_local_profile_payload(app)?;
+    let active_profile_id = read_active_profile_id(app)?.filter(|active_id| {
+        payload
+            .profiles
+            .iter()
+            .any(|profile| profile.id == *active_id)
+    });
+    Ok(DeviceProfilesState {
+        profiles: payload.profiles,
+        active_profile_id,
+    })
+}
+
+fn ensure_local_profiles(
+    app: &tauri::AppHandle,
+    conn: &rusqlite::Connection,
+) -> Result<DeviceProfilesState, String> {
+    let mut payload = read_local_profile_payload(app)?;
+    let mut active_profile_id = read_active_profile_id(app)?;
+
+    if payload.profiles.is_empty() {
+        let default_id = "default".to_string();
+        payload.profiles.push(DeviceProfile {
+            id: default_id.clone(),
+            name: "Default".into(),
+            settings: db::export_device_profile_settings(conn).map_err(|e| e.to_string())?,
+            updated_at: now_rfc3339(),
+        });
+        active_profile_id = Some(default_id);
+        write_local_profile_payload(app, &payload)?;
+    }
+
+    if active_profile_id
+        .as_ref()
+        .map(|active_id| {
+            !payload
+                .profiles
+                .iter()
+                .any(|profile| profile.id == *active_id)
+        })
+        .unwrap_or(true)
+    {
+        active_profile_id = payload.profiles.first().map(|profile| profile.id.clone());
+    }
+
+    write_active_profile_id(app, active_profile_id.as_deref())?;
+
+    Ok(DeviceProfilesState {
+        profiles: payload.profiles,
+        active_profile_id,
+    })
+}
+
+fn autosave_active_profile_from_db(
+    app: &tauri::AppHandle,
+    conn: &rusqlite::Connection,
+) -> Result<(), String> {
+    let Some(active_profile_id) = read_active_profile_id(app)? else {
+        return Ok(());
+    };
+    let mut payload = read_local_profile_payload(app)?;
+    let Some(profile) = payload
+        .profiles
+        .iter_mut()
+        .find(|profile| profile.id == active_profile_id)
+    else {
+        return Ok(());
+    };
+
+    profile.settings = db::export_device_profile_settings(conn).map_err(|e| e.to_string())?;
+    profile.updated_at = now_rfc3339();
+    write_local_profile_payload(app, &payload)
+}
+
+fn reload_profile_runtime_state(
+    tracker: &mut crate::tracker::TrackerState,
+    conn: &rusqlite::Connection,
+) -> Result<(), String> {
+    tracker.escalation_engine.settings =
+        db::get_escalation_settings(conn).map_err(|e| e.to_string())?;
+    tracker.ignored_apps = db::get_ignored_apps(conn).map_err(|e| e.to_string())?;
+    tracker.app_categories.clear();
+    for (name, category) in db::get_all_app_categories_for_cache(conn).map_err(|e| e.to_string())?
+    {
+        tracker.app_categories.insert(name, category);
+    }
+    tracker.title_keyword_rules = db::get_title_keyword_rules(conn)
+        .map_err(|e| e.to_string())?
+        .iter()
+        .map(|rule| {
+            (
+                rule.app_name.clone(),
+                rule.keyword.clone(),
+                rule.category.clone(),
+            )
+        })
+        .collect();
+    Ok(())
+}
+
+fn apply_profile_settings_to_device(
+    state: &State<'_, SharedTrackerState>,
+    settings: &DeviceProfileSettings,
+) -> Result<(), String> {
+    let db_path = {
+        let tracker = state.lock().map_err(|e| e.to_string())?;
+        tracker.db_path.clone()
+    };
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    db::apply_device_profile_settings(&conn, settings).map_err(|e| e.to_string())?;
+
+    let mut tracker = state.lock().map_err(|e| e.to_string())?;
+    reload_profile_runtime_state(&mut tracker, &conn)
+}
+
+fn profile_is_newer(candidate: &DeviceProfile, current: &DeviceProfile) -> bool {
+    match (
+        chrono::DateTime::parse_from_rfc3339(&candidate.updated_at),
+        chrono::DateTime::parse_from_rfc3339(&current.updated_at),
+    ) {
+        (Ok(candidate_time), Ok(current_time)) => candidate_time > current_time,
+        _ => candidate.updated_at > current.updated_at,
+    }
+}
+
+fn merge_profile_payloads(
+    local: &CloudDeviceProfilesPayload,
+    remote: &CloudDeviceProfilesPayload,
+    deleted_profile_id: Option<&str>,
+) -> CloudDeviceProfilesPayload {
+    let mut merged = local.clone();
+
+    for remote_profile in &remote.profiles {
+        if let Some(local_profile) = merged
+            .profiles
+            .iter_mut()
+            .find(|profile| profile.id == remote_profile.id)
+        {
+            if profile_is_newer(remote_profile, local_profile) {
+                *local_profile = remote_profile.clone();
+            }
+        } else {
+            merged.profiles.push(remote_profile.clone());
+        }
+    }
+
+    if let Some(deleted_id) = deleted_profile_id {
+        merged.profiles.retain(|profile| profile.id != deleted_id);
+    }
+
+    merged.version = DEVICE_PROFILES_VERSION;
+    merged
+}
+
+fn profiles_from_cloud_settings(settings: &serde_json::Value) -> CloudDeviceProfilesPayload {
+    settings
+        .get(DEVICE_PROFILES_KEY)
+        .and_then(|value| serde_json::from_value::<CloudDeviceProfilesPayload>(value.clone()).ok())
+        .unwrap_or_default()
+}
+
+fn settings_object(value: Option<&serde_json::Value>) -> serde_json::Map<String, serde_json::Value> {
+    value
+        .and_then(|settings| settings.as_object().cloned())
+        .unwrap_or_default()
+}
+
+async fn put_profiles_to_cloud(
+    state: &State<'_, SharedTrackerState>,
+    app: &tauri::AppHandle,
+    local_payload: &CloudDeviceProfilesPayload,
+    merge_remote: bool,
+    deleted_profile_id: Option<&str>,
+) -> Result<CloudDeviceProfilesPayload, String> {
+    let (access, refresh) = read_auth(state)?;
+    let sync_url = sync::api_base_url();
+
+    let pulled = sync::authed_json::<serde_json::Value>(
+        &sync_url,
+        reqwest::Method::GET,
+        "/api/settings",
+        &access,
+        &refresh,
+        None,
+    )
+    .await?;
+    store_rotated(state, app, pulled.rotated_tokens)?;
+
+    let remote_settings_map = settings_object(pulled.body.get("settings"));
+    let remote_settings_value = serde_json::Value::Object(remote_settings_map.clone());
+    let remote_payload = profiles_from_cloud_settings(&remote_settings_value);
+    let final_payload = if merge_remote {
+        merge_profile_payloads(local_payload, &remote_payload, deleted_profile_id)
+    } else {
+        let mut payload = local_payload.clone();
+        if let Some(deleted_id) = deleted_profile_id {
+            payload.profiles.retain(|profile| profile.id != deleted_id);
+        }
+        payload
+    };
+
+    let mut next_settings = remote_settings_map;
+    next_settings.insert(
+        DEVICE_PROFILES_KEY.into(),
+        serde_json::to_value(&final_payload).map_err(|e| e.to_string())?,
+    );
+
+    let theme = pulled
+        .body
+        .get("theme")
+        .and_then(|value| value.as_str())
+        .unwrap_or("glass-dark")
+        .to_string();
+    let body = serde_json::json!({
+        "theme": theme,
+        "settings": serde_json::Value::Object(next_settings),
+    });
+
+    let (access, refresh) = read_auth(state)?;
+    let pushed = sync::authed_json::<serde_json::Value>(
+        &sync_url,
+        reqwest::Method::PUT,
+        "/api/settings",
+        &access,
+        &refresh,
+        Some(&body),
+    )
+    .await?;
+    store_rotated(state, app, pushed.rotated_tokens)?;
+
+    Ok(final_payload)
+}
+
+async fn push_profiles_best_effort(
+    state: &State<'_, SharedTrackerState>,
+    app: &tauri::AppHandle,
+    payload: &CloudDeviceProfilesPayload,
+    merge_remote: bool,
+    deleted_profile_id: Option<&str>,
+) {
+    if read_auth(state).is_ok() {
+        if let Ok(final_payload) =
+            put_profiles_to_cloud(state, app, payload, merge_remote, deleted_profile_id).await
+        {
+            let _ = write_local_profile_payload(app, &final_payload);
+        }
+    }
+}
 
 fn read_auth(
     state: &State<'_, SharedTrackerState>,
@@ -677,6 +1050,202 @@ fn store_rotated(
 }
 
 #[tauri::command]
+pub fn list_device_profiles(
+    state: State<SharedTrackerState>,
+    app: tauri::AppHandle,
+) -> Result<DeviceProfilesState, String> {
+    let db_path = {
+        let tracker = state.lock().map_err(|e| e.to_string())?;
+        tracker.db_path.clone()
+    };
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    ensure_local_profiles(&app, &conn)
+}
+
+#[tauri::command]
+pub async fn create_device_profile(
+    state: State<'_, SharedTrackerState>,
+    app: tauri::AppHandle,
+    name: String,
+) -> Result<DeviceProfilesState, String> {
+    let name = cleaned_profile_name(&name)?;
+    let db_path = {
+        let tracker = state.lock().map_err(|e| e.to_string())?;
+        tracker.db_path.clone()
+    };
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    ensure_local_profiles(&app, &conn)?;
+
+    let mut payload = read_local_profile_payload(&app)?;
+    let profile_id = new_profile_id();
+    payload.profiles.push(DeviceProfile {
+        id: profile_id.clone(),
+        name,
+        settings: db::export_device_profile_settings(&conn).map_err(|e| e.to_string())?,
+        updated_at: now_rfc3339(),
+    });
+    write_local_profile_payload(&app, &payload)?;
+    write_active_profile_id(&app, Some(&profile_id))?;
+
+    push_profiles_best_effort(&state, &app, &payload, true, None).await;
+    device_profiles_state(&app)
+}
+
+#[tauri::command]
+pub async fn rename_device_profile(
+    state: State<'_, SharedTrackerState>,
+    app: tauri::AppHandle,
+    profile_id: String,
+    name: String,
+) -> Result<DeviceProfilesState, String> {
+    let name = cleaned_profile_name(&name)?;
+    let mut payload = read_local_profile_payload(&app)?;
+    let Some(profile) = payload
+        .profiles
+        .iter_mut()
+        .find(|profile| profile.id == profile_id)
+    else {
+        return Err("Profile not found".into());
+    };
+    profile.name = name;
+    profile.updated_at = now_rfc3339();
+    write_local_profile_payload(&app, &payload)?;
+
+    push_profiles_best_effort(&state, &app, &payload, true, None).await;
+    device_profiles_state(&app)
+}
+
+#[tauri::command]
+pub async fn delete_device_profile(
+    state: State<'_, SharedTrackerState>,
+    app: tauri::AppHandle,
+    profile_id: String,
+) -> Result<DeviceProfilesState, String> {
+    let mut payload = read_local_profile_payload(&app)?;
+    if payload.profiles.len() <= 1 {
+        return Err("Keep at least one profile".into());
+    }
+
+    let original_len = payload.profiles.len();
+    payload.profiles.retain(|profile| profile.id != profile_id);
+    if payload.profiles.len() == original_len {
+        return Err("Profile not found".into());
+    }
+    write_local_profile_payload(&app, &payload)?;
+
+    let deleted_active = read_active_profile_id(&app)?
+        .as_ref()
+        .map(|active_id| active_id == &profile_id)
+        .unwrap_or(false);
+    if deleted_active {
+        let next_profile = payload
+            .profiles
+            .first()
+            .cloned()
+            .ok_or_else(|| "No remaining profiles".to_string())?;
+        write_active_profile_id(&app, Some(&next_profile.id))?;
+        apply_profile_settings_to_device(&state, &next_profile.settings)?;
+    }
+
+    push_profiles_best_effort(&state, &app, &payload, true, Some(&profile_id)).await;
+    device_profiles_state(&app)
+}
+
+#[tauri::command]
+pub async fn select_device_profile(
+    state: State<'_, SharedTrackerState>,
+    app: tauri::AppHandle,
+    profile_id: String,
+) -> Result<DeviceProfilesState, String> {
+    let db_path = {
+        let tracker = state.lock().map_err(|e| e.to_string())?;
+        tracker.db_path.clone()
+    };
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    ensure_local_profiles(&app, &conn)?;
+    autosave_active_profile_from_db(&app, &conn)?;
+
+    let payload = read_local_profile_payload(&app)?;
+    let profile = payload
+        .profiles
+        .iter()
+        .find(|profile| profile.id == profile_id)
+        .cloned()
+        .ok_or_else(|| "Profile not found".to_string())?;
+
+    apply_profile_settings_to_device(&state, &profile.settings)?;
+    write_active_profile_id(&app, Some(&profile.id))?;
+
+    push_profiles_best_effort(&state, &app, &payload, true, None).await;
+    device_profiles_state(&app)
+}
+
+#[tauri::command]
+pub async fn save_active_device_profile(
+    state: State<'_, SharedTrackerState>,
+    app: tauri::AppHandle,
+) -> Result<DeviceProfilesState, String> {
+    let db_path = {
+        let tracker = state.lock().map_err(|e| e.to_string())?;
+        tracker.db_path.clone()
+    };
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    ensure_local_profiles(&app, &conn)?;
+    autosave_active_profile_from_db(&app, &conn)?;
+
+    let payload = read_local_profile_payload(&app)?;
+    push_profiles_best_effort(&state, &app, &payload, true, None).await;
+    device_profiles_state(&app)
+}
+
+#[tauri::command]
+pub async fn sync_device_profiles(
+    state: State<'_, SharedTrackerState>,
+    app: tauri::AppHandle,
+) -> Result<DeviceProfilesState, String> {
+    let db_path = {
+        let tracker = state.lock().map_err(|e| e.to_string())?;
+        tracker.db_path.clone()
+    };
+    let conn = db::open_db(&db_path).map_err(|e| e.to_string())?;
+    ensure_local_profiles(&app, &conn)?;
+
+    let local_payload = read_local_profile_payload(&app)?;
+    let synced_payload = put_profiles_to_cloud(&state, &app, &local_payload, true, None).await?;
+    write_local_profile_payload(&app, &synced_payload)?;
+
+    let mut active_profile_id = read_active_profile_id(&app)?;
+    if active_profile_id
+        .as_ref()
+        .map(|active_id| {
+            !synced_payload
+                .profiles
+                .iter()
+                .any(|profile| profile.id == *active_id)
+        })
+        .unwrap_or(true)
+    {
+        active_profile_id = synced_payload
+            .profiles
+            .first()
+            .map(|profile| profile.id.clone());
+        write_active_profile_id(&app, active_profile_id.as_deref())?;
+    }
+
+    if let Some(active_id) = active_profile_id {
+        if let Some(profile) = synced_payload
+            .profiles
+            .iter()
+            .find(|profile| profile.id == active_id)
+        {
+            apply_profile_settings_to_device(&state, &profile.settings)?;
+        }
+    }
+
+    device_profiles_state(&app)
+}
+
+#[tauri::command]
 pub async fn pull_settings(
     state: State<'_, SharedTrackerState>,
     app: tauri::AppHandle,
@@ -705,7 +1274,51 @@ pub async fn push_settings(
 ) -> Result<serde_json::Value, String> {
     let (access, refresh) = read_auth(&state)?;
     let sync_url = sync::api_base_url();
-    let body = serde_json::json!({ "theme": theme, "settings": settings });
+
+    let incoming_settings = settings_object(Some(&settings));
+    let mut next_settings =
+        match sync::authed_json::<serde_json::Value>(
+            &sync_url,
+            reqwest::Method::GET,
+            "/api/settings",
+            &access,
+            &refresh,
+            None,
+        )
+        .await
+        {
+            Ok(pulled) => {
+                store_rotated(&state, &app, pulled.rotated_tokens)?;
+                settings_object(pulled.body.get("settings"))
+            }
+            Err(e) => {
+                let local_profiles = read_local_profile_payload(&app).unwrap_or_default();
+                if incoming_settings.is_empty() && local_profiles.profiles.is_empty() {
+                    return Err(e);
+                }
+                serde_json::Map::new()
+            }
+        };
+
+    for (key, value) in incoming_settings {
+        next_settings.insert(key, value);
+    }
+
+    if !next_settings.contains_key(DEVICE_PROFILES_KEY) {
+        let local_profiles = read_local_profile_payload(&app).unwrap_or_default();
+        if !local_profiles.profiles.is_empty() {
+            next_settings.insert(
+                DEVICE_PROFILES_KEY.into(),
+                serde_json::to_value(local_profiles).map_err(|e| e.to_string())?,
+            );
+        }
+    }
+
+    let body = serde_json::json!({
+        "theme": theme,
+        "settings": serde_json::Value::Object(next_settings),
+    });
+    let (access, refresh) = read_auth(&state)?;
     let result = sync::authed_json::<serde_json::Value>(
         &sync_url,
         reqwest::Method::PUT,

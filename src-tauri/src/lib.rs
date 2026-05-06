@@ -311,6 +311,13 @@ pub fn run() {
             commands::get_current_session_key,
             commands::pull_settings,
             commands::push_settings,
+            commands::list_device_profiles,
+            commands::create_device_profile,
+            commands::rename_device_profile,
+            commands::delete_device_profile,
+            commands::select_device_profile,
+            commands::save_active_device_profile,
+            commands::sync_device_profiles,
             commands::list_devices,
             commands::revoke_device,
         ])

@@ -128,3 +128,32 @@ pub struct WrapUpNote {
     pub next_steps: String,
     pub created_at: String, // RFC3339
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileAppCategory {
+    pub app_name: String,
+    pub category: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceProfileSettings {
+    pub escalation: EscalationSettings,
+    pub ignored_apps: Vec<String>,
+    pub reminder_rules: Vec<ReminderRule>,
+    pub app_categories: Vec<ProfileAppCategory>,
+    pub title_keyword_rules: Vec<TitleKeywordRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceProfile {
+    pub id: String,
+    pub name: String,
+    pub settings: DeviceProfileSettings,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceProfilesState {
+    pub profiles: Vec<DeviceProfile>,
+    pub active_profile_id: Option<String>,
+}

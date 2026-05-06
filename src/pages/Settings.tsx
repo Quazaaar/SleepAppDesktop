@@ -37,6 +37,7 @@ import type { ReminderRule, SyncStatus, DeviceListEntry } from "../lib/types";
 import { notifications } from "@mantine/notifications";
 import { useNavigate } from "react-router-dom";
 import { EscalationSettingsCard } from "../components/EscalationSettingsCard";
+import { DeviceProfilesCard } from "../components/DeviceProfilesCard";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -54,6 +55,7 @@ export default function Settings() {
   const [authLoading, setAuthLoading] = useState(false);
   const [devices, setDevices] = useState<DeviceListEntry[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
+  const [profileReloadKey, setProfileReloadKey] = useState(0);
 
   // New rule form state
   const [ruleType, setRuleType] = useState<string>("break_reminder");
@@ -87,6 +89,11 @@ export default function Settings() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleProfileApplied = async () => {
+    await loadData();
+    setProfileReloadKey((key) => key + 1);
+  };
 
   const handleToggleRule = async (ruleId: number, enabled: boolean) => {
     await toggleReminderRule(ruleId, enabled);
@@ -234,8 +241,11 @@ export default function Settings() {
         </Group>
       </Card>
 
+      <DeviceProfilesCard isLoggedIn={isLoggedIn} onProfileApplied={handleProfileApplied} />
+
       {/* Escalation Settings */}
-      <EscalationSettingsCard />
+      <EscalationSettingsCard reloadKey={profileReloadKey} />
+
 
       {/* Ignored Apps */}
       <Card shadow="sm" padding="lg" radius="md" withBorder>

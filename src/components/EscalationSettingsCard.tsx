@@ -5,7 +5,11 @@ import { getEscalationSettings, setEscalationSettings } from "../lib/commands";
 import type { EscalationSettings } from "../lib/types";
 import { TimelineBar } from "./TimelineBar";
 
-export function EscalationSettingsCard() {
+interface EscalationSettingsCardProps {
+  reloadKey?: number;
+}
+
+export function EscalationSettingsCard({ reloadKey = 0 }: EscalationSettingsCardProps) {
   const [settings, setSettings] = useState<EscalationSettings | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -19,7 +23,7 @@ export function EscalationSettingsCard() {
           color: "red",
         });
       });
-  }, []);
+  }, [reloadKey]);
 
   const handleSave = async (updated: EscalationSettings) => {
     setSaving(true);

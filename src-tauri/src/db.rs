@@ -1,8 +1,8 @@
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use rusqlite::{Connection, Result, params};
 
-use crate::models::{ActivitySession, AppCategoryEntry, AppUsageStat, DailyStats, EscalationSettings, ReminderRule, TitleKeywordRule, WrapUpNote};
+use crate::models::{ActivitySession, AppCategoryEntry, AppUsageStat, DailyStats, DeviceProfileSettings, EscalationSettings, ProfileAppCategory, ReminderRule, TitleKeywordRule, WrapUpNote};
 
 pub fn open_db(db_path: &str) -> Result<Connection> {
     Connection::open(db_path)
@@ -301,6 +301,24 @@ pub fn save_reminder_rule(conn: &Connection, rule: &ReminderRule) -> Result<()> 
     Ok(())
 }
 
+pub fn replace_reminder_rules(conn: &Connection, rules: &[ReminderRule]) -> Result<()> {
+    conn.execute("DELETE FROM reminder_rules", [])?;
+    let mut stmt = conn.prepare(
+        "INSERT INTO reminder_rules (rule_type, app_name, threshold_minutes, message, enabled)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+    )?;
+    for rule in rules {
+        stmt.execute(params![
+            rule.rule_type,
+            rule.app_name,
+            rule.threshold_minutes,
+            rule.message,
+            rule.enabled as i64,
+        ])?;
+    }
+    Ok(())
+}
+
 pub fn delete_reminder_rule(conn: &Connection, rule_id: i64) -> Result<()> {
     conn.execute("DELETE FROM reminder_rules WHERE id = ?1", params![rule_id])?;
     Ok(())
@@ -479,6 +497,28 @@ pub fn get_all_app_categories_for_cache(conn: &Connection) -> Result<Vec<(String
     Ok(pairs)
 }
 
+pub fn replace_app_categories(conn: &Connection, entries: &[ProfileAppCategory]) -> Result<()> {
+    let mut existing_stmt = conn.prepare("SELECT app_name, last_seen FROM app_categories")?;
+    let existing_last_seen = existing_stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?.to_lowercase(), row.get::<_, Option<String>>(1)?))
+        })?
+        .collect::<Result<HashMap<String, Option<String>>>>()?;
+    drop(existing_stmt);
+
+    conn.execute("DELETE FROM app_categories", [])?;
+    let mut insert = conn.prepare(
+        "INSERT INTO app_categories (app_name, category, last_seen, is_default)
+         VALUES (?1, ?2, ?3, 0)",
+    )?;
+    for entry in entries {
+        let app_name = entry.app_name.to_lowercase();
+        let last_seen = existing_last_seen.get(&app_name).cloned().flatten();
+        insert.execute(params![app_name, entry.category, last_seen])?;
+    }
+    Ok(())
+}
+
 pub fn get_title_keyword_rules(conn: &Connection) -> Result<Vec<TitleKeywordRule>> {
     let mut stmt = conn.prepare(
         "SELECT id, app_name, keyword, category FROM title_keyword_rules ORDER BY app_name ASC, keyword ASC",
@@ -511,6 +551,21 @@ pub fn add_title_keyword_rule(
 
 pub fn delete_title_keyword_rule(conn: &Connection, id: i64) -> Result<()> {
     conn.execute("DELETE FROM title_keyword_rules WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn replace_title_keyword_rules(conn: &Connection, rules: &[TitleKeywordRule]) -> Result<()> {
+    conn.execute("DELETE FROM title_keyword_rules", [])?;
+    let mut stmt = conn.prepare(
+        "INSERT INTO title_keyword_rules (app_name, keyword, category) VALUES (?1, ?2, ?3)",
+    )?;
+    for rule in rules {
+        stmt.execute(params![
+            rule.app_name.to_lowercase(),
+            rule.keyword.to_lowercase(),
+            rule.category,
+        ])?;
+    }
     Ok(())
 }
 
@@ -602,4 +657,47 @@ pub fn get_note_by_session_key(conn: &Connection, session_key: &str) -> Result<O
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e),
     }
+}
+
+pub fn export_device_profile_settings(conn: &Connection) -> Result<DeviceProfileSettings> {
+    let mut escalation = get_escalation_settings(conn)?;
+    escalation.paused_until = None;
+
+    let mut reminder_rules = get_reminder_rules(conn)?;
+    for rule in &mut reminder_rules {
+        rule.id = None;
+    }
+
+    let app_categories = get_all_app_categories_for_cache(conn)?
+        .into_iter()
+        .map(|(app_name, category)| ProfileAppCategory { app_name, category })
+        .collect();
+
+    let mut title_keyword_rules = get_title_keyword_rules(conn)?;
+    for rule in &mut title_keyword_rules {
+        rule.id = None;
+    }
+
+    Ok(DeviceProfileSettings {
+        escalation,
+        ignored_apps: get_ignored_apps(conn)?,
+        reminder_rules,
+        app_categories,
+        title_keyword_rules,
+    })
+}
+
+pub fn apply_device_profile_settings(
+    conn: &Connection,
+    settings: &DeviceProfileSettings,
+) -> Result<()> {
+    let mut escalation = settings.escalation.clone();
+    escalation.paused_until = None;
+
+    save_escalation_settings(conn, &escalation)?;
+    save_ignored_apps(conn, &settings.ignored_apps)?;
+    replace_reminder_rules(conn, &settings.reminder_rules)?;
+    replace_app_categories(conn, &settings.app_categories)?;
+    replace_title_keyword_rules(conn, &settings.title_keyword_rules)?;
+    Ok(())
 }
